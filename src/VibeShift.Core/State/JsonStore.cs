@@ -14,8 +14,15 @@ public sealed class JsonStore(string dir)
         RespectNullableAnnotations = true,
     };
 
-    public static JsonStore Default { get; } =
-        new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VibeShift"));
+    /// <summary>Set to keep a copy's data elsewhere (test runs, portable use) so it never touches the user's session.</summary>
+    public const string DataDirVariable = "VIBESHIFT_DATA";
+
+    public static JsonStore Default { get; } = new(ResolveDir(
+        Environment.GetEnvironmentVariable(DataDirVariable),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)));
+
+    public static string ResolveDir(string? overrideDir, string appData) =>
+        string.IsNullOrWhiteSpace(overrideDir) ? Path.Combine(appData, "VibeShift") : overrideDir;
 
     public string Dir => dir;
 

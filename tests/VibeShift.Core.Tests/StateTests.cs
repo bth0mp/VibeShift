@@ -121,6 +121,14 @@ public sealed class StateTests : IDisposable
         Assert.Equal("OpenAI.ChatGPT_x!App", r.LaunchTargets["chatgpt"].Aumid);
     }
 
+    [Fact] // a test or portable copy can keep its data apart, so it never touches the user's session
+    public void Data_folder_can_be_redirected()
+    {
+        Assert.Equal(@"C:\Users\u\AppData\Roaming\VibeShift", JsonStore.ResolveDir(null, @"C:\Users\u\AppData\Roaming"));
+        Assert.Equal(@"D:\temp\vs-test", JsonStore.ResolveDir(@"D:\temp\vs-test", @"C:\Users\u\AppData\Roaming"));
+        Assert.Equal(@"C:\Users\u\AppData\Roaming\VibeShift", JsonStore.ResolveDir("  ", @"C:\Users\u\AppData\Roaming"));
+    }
+
     [Fact] // M3: background work reads a snapshot, not the live object the UI edits
     public void Clone_is_independent()
     {

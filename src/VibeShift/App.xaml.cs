@@ -45,8 +45,12 @@ public partial class App : Application
         }
 
         // One instance: a second launch just brings the first window forward.
-        instance = new Mutex(true, @"Local\VibeShift.Instance", out bool first);
-        showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\VibeShift.Show");
+        // A copy with its own data folder (VIBESHIFT_DATA) is its own instance, so test runs never stop the real one.
+        string scope = Environment.GetEnvironmentVariable(JsonStore.DataDirVariable) is { Length: > 0 } d
+            ? "." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(d.ToLowerInvariant())))[..12]
+            : "";
+        instance = new Mutex(true, @"Local\VibeShift.Instance" + scope, out bool first);
+        showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\VibeShift.Show" + scope);
         if (!first)
         {
             showSignal.Set();

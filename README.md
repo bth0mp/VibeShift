@@ -33,11 +33,12 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 
 **Back to vibe coding**
 
-- Reopens only the apps VibeShift closed, in the order it closed them. Apps that are already running again are skipped.
+- Reopens the apps VibeShift closed, in the order it closed them, plus your **vibe apps**: anything you've switched to **Open** on the Apps page (Claude and ChatGPT, say) opens every time you come back, even if it wasn't open before. Apps that are already running are skipped.
+- **Switch back when my game closes** (on by default) does this for you about 10 seconds after your game exits, even if you clicked Start gaming yourself. A Windows notification tells you what opened.
 - Microsoft Store apps (like Claude and ChatGPT) reopen through Windows, the same way the Start menu opens them.
 - If VibeShift crashes or your PC restarts in the middle of a game, it opens in gaming mode next time, so **Back to vibe coding** still knows what to reopen.
 
-Closing the window keeps VibeShift running as a small icon by the clock. Right-click that icon to switch modes or quit.
+Closing the window keeps VibeShift running as a small icon by the clock, with a green dot in vibe coding mode and a purple one while gaming. Right-click it to switch modes or quit. Windows 11 tucks new icons under the **^** arrow; drag it onto the taskbar to keep it in sight, and turn on **Start with Windows** in Settings so it's always there.
 
 ## What it can close
 
