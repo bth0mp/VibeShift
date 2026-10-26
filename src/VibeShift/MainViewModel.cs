@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -25,7 +26,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private SessionState? session;
     private Mode mode;
     private bool isBusy;
-    private string freeRamText = "", appsText = "", thirdValue = "", busyText = "";
+    private string freeRamText = "", appsText = "", thirdValue = "", busyText = "", appsMessage = "";
 
     public MainViewModel(JsonStore store, Settings settings, bool demo = false)
     {
@@ -36,6 +37,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         session = demo ? null : store.LoadSession();
         mode = session is null ? Mode.Coding : Mode.Gaming;
         PrimaryCommand = new RelayCommand(() => ToggleModeAsync(automatic: false));
+        MyGames = new ObservableCollection<string>(settings.MyGames);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -51,6 +53,124 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<AppRow> HomeRows { get; } = [];
     public ObservableCollection<AppRow> AllRows { get; } = [];
+    public ObservableCollection<string> MyGames { get; }
+
+    /// <summary>Raised after any settings save (the game watcher rebuilds on it).</summary>
+    public event Action? SettingsChanged;
+
+    // ----- Settings page -----
+
+    public IReadOnlyList<ThemeOption> ThemeOptions { get; } =
+        [new(ThemeChoice.System, "Follow Windows"), new(ThemeChoice.Dark, "Dark"), new(ThemeChoice.Light, "Light")];
+
+    public IReadOnlyList<int> ForceCloseOptions { get; } = [3, 5, 10, 15, 30];
+
+    public ThemeChoice Theme
+    {
+        get => Settings.Theme;
+        set
+        {
+            if (Settings.Theme == value) return;
+            Settings.Theme = value;
+            ThemeManager.Apply(value);
+            SaveSettings();
+            Raise();
+        }
+    }
+
+    public bool AutoMode
+    {
+        get => Settings.AutoMode;
+        set { Settings.AutoMode = value; SaveSettings(); Raise(); }
+    }
+
+    public bool StartWithWindows
+    {
+        get => Settings.StartWithWindows;
+        set
+        {
+            Settings.StartWithWindows = value;
+            if (!demo) StartupRegistration.Set(value);
+            SaveSettings();
+            Raise();
+        }
+    }
+
+    public bool ExtraBoost
+    {
+        get => Settings.ExtraBoost;
+        set { Settings.ExtraBoost = value; SaveSettings(); Raise(); }
+    }
+
+    public int ForceCloseSeconds
+    {
+        get => Settings.ForceCloseSeconds;
+        set { Settings.ForceCloseSeconds = value; SaveSettings(); Raise(); }
+    }
+
+    public string BoostServicesText => string.Join(", ", Settings.BoostServices);
+
+    public string Version => "VibeShift " + typeof(MainViewModel).Assembly.GetName().Version!.ToString(3);
+
+    /// <summary>Inline note on the Apps page, e.g. why an exe couldn't be added.</summary>
+    public string AppsMessage
+    {
+        get => appsMessage;
+        private set { if (Set(ref appsMessage, value)) Raise(nameof(HasAppsMessage)); }
+    }
+
+    public bool HasAppsMessage => AppsMessage.Length > 0;
+
+    public void AddApp(string path)
+    {
+        string name = Path.GetFileNameWithoutExtension(path);
+        if (BlockList.IsBlocked(name, path, -1, Environment.ProcessId, new HashSet<int>())
+            || string.Equals(path, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+        {
+            AppsMessage = $"VibeShift won't close {name}: it's part of Windows or VibeShift itself.";
+            return;
+        }
+        if (Settings.CustomApps.Contains(path, StringComparer.OrdinalIgnoreCase))
+        {
+            AppsMessage = $"{name} is already in your list.";
+            return;
+        }
+        Settings.CustomApps.Add(path);
+        AppsMessage = "";
+        SaveSettings();
+        _ = RefreshAsync();
+    }
+
+    public void RemoveApp(AppRow row)
+    {
+        Settings.CustomApps.RemoveAll(p => AppCatalog.Custom(p).Id == row.Id);
+        Settings.Toggles.Remove(row.Id);
+        rows.Remove(row.Id);
+        SaveSettings();
+        _ = RefreshAsync();
+    }
+
+    public void AddGame(string path)
+    {
+        if (Settings.MyGames.Contains(path, StringComparer.OrdinalIgnoreCase)) return;
+        Settings.MyGames.Add(path);
+        MyGames.Add(path);
+        SaveSettings();
+    }
+
+    public void RemoveGame(string path)
+    {
+        Settings.MyGames.Remove(path);
+        MyGames.Remove(path);
+        SaveSettings();
+    }
+
+    private void SaveSettings()
+    {
+        if (demo) return;
+        store.SaveSettings(Settings);
+        SettingsChanged?.Invoke();
+    }
 
     public Mode Mode
     {
@@ -148,7 +268,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnToggle(AppRow row, bool on)
     {
         Settings.Toggles[row.Id] = on;
-        store.SaveSettings(Settings);
+        SaveSettings();
         _ = RefreshAsync();
     }
 
@@ -250,7 +370,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return true;
     }
 
-    private void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    private void Raise([CallerMemberName] string name = "") => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    public sealed record ThemeOption(ThemeChoice Value, string Label);
 
     public sealed class RelayCommand(Func<Task> run) : ICommand
     {

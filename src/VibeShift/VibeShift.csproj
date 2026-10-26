@@ -17,6 +17,15 @@
     <Copyright>Copyright (c) 2026 bth0mp</Copyright>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <ApplicationIcon>..\..\assets\VibeShift.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- window + tray icon, loaded as pack://application:,,,/VibeShift.ico -->
+    <Resource Include="..\..\assets\VibeShift.ico" Link="VibeShift.ico" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\VibeShift.Core\VibeShift.Core.csproj" />
   </ItemGroup>

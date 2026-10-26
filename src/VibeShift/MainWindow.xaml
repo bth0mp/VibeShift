@@ -5,7 +5,7 @@
         ResizeMode="CanMinimize" WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}"
         FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True" Icon="pack://application:,,,/VibeShift.ico">
     <Grid Background="{DynamicResource BgBrush}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="52" />
@@ -22,7 +22,8 @@
         </Border>
 
         <!-- Home -->
-        <Grid x:Name="HomePage" Grid.Column="1" Margin="18,16,18,18">
+        <Grid x:Name="HomePage" Grid.Column="1" Margin="18,16,18,18"
+              Visibility="{Binding IsChecked, ElementName=HomeTab, Converter={StaticResource Visible}}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -69,7 +70,7 @@
             </UniformGrid>
 
             <DockPanel Grid.Row="2" Margin="0,0,0,7">
-                <Button x:Name="AddAppLink" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add app"
+                <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add app" Click="AddApp_Click"
                         Visibility="{Binding IsCoding, Converter={StaticResource Visible}}" />
                 <TextBlock Style="{StaticResource Label}" Text="{Binding ListTitle}" />
             </DockPanel>
@@ -101,6 +102,132 @@
                         IsEnabled="{Binding IsIdle}" Visibility="{Binding IsGaming, Converter={StaticResource Visible}}" />
             </Grid>
         </Grid>
+
+        <!-- Apps -->
+        <Grid Grid.Column="1" Margin="18,16,18,18"
+              Visibility="{Binding IsChecked, ElementName=AppsTab, Converter={StaticResource Visible}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Apps" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Grid.Row="1" Style="{StaticResource Hint}" FontSize="12" Margin="0,6,0,16"
+                       Text="Switch on what Gaming mode should close. An app shows up here once VibeShift has seen it running, or when you add it yourself." />
+            <DockPanel Grid.Row="2" Margin="0,0,0,7">
+                <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add app" Click="AddApp_Click" />
+                <TextBlock Style="{StaticResource Label}" Text="YOUR APPS" />
+            </DockPanel>
+            <TextBlock Grid.Row="3" Text="{Binding AppsMessage}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" Margin="0,0,0,8"
+                       Visibility="{Binding HasAppsMessage, Converter={StaticResource Visible}}" />
+            <Border Grid.Row="4" Style="{StaticResource Card}" VerticalAlignment="Top">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding AllRows}" Margin="0,-1,0,0" ItemTemplate="{DynamicResource AppsRowTemplate}" />
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- Settings -->
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                      Visibility="{Binding IsChecked, ElementName=SettingsTab, Converter={StaticResource Visible}}">
+            <StackPanel Margin="18,16,18,18">
+                <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" />
+
+                <TextBlock Style="{StaticResource Label}" Text="APPEARANCE" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <DockPanel>
+                        <ListBox DockPanel.Dock="Right" Style="{StaticResource Segmented}" ItemsSource="{Binding ThemeOptions}"
+                                 DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Theme}" />
+                        <TextBlock Text="Theme" VerticalAlignment="Center" />
+                    </DockPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource Label}" Text="AUTO MODE" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <DockPanel>
+                            <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding AutoMode}" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Auto mode" />
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="Auto mode" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
+                                           Text="Switch to gaming when a game starts, and back 10 seconds after it closes." />
+                            </StackPanel>
+                        </DockPanel>
+                        <Rectangle Height="1" Fill="{DynamicResource BorderBrush}" Margin="0,11" />
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add game" Click="AddGame_Click" />
+                            <TextBlock Style="{StaticResource Label}" Text="MY GAMES" />
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,4"
+                                   Text="Steam, Epic, GOG, EA and Xbox games are found automatically. Add anything else here." />
+                        <ItemsControl ItemsSource="{Binding MyGames}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,3,0,0">
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Click="RemoveGame_Click"
+                                                ToolTip="Remove" AutomationProperties.Name="Remove game" />
+                                        <TextBlock Text="{Binding}" ToolTip="{Binding}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource Label}" Text="CLOSING APPS" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <TextBlock Text="Force-close after" />
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,9"
+                                   Text="When you click Start gaming, apps get this long to close on their own. Auto mode closes them right away." />
+                        <ListBox Style="{StaticResource Segmented}" HorizontalAlignment="Left" ItemsSource="{Binding ForceCloseOptions}"
+                                 ItemStringFormat="{}{0} s" SelectedItem="{Binding ForceCloseSeconds}" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource Label}" Text="STARTUP" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <DockPanel>
+                        <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding StartWithWindows}" VerticalAlignment="Center"
+                                  AutomationProperties.Name="Start with Windows" />
+                        <StackPanel Margin="0,0,12,0">
+                            <TextBlock Text="Start with Windows" />
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0" Text="Starts quietly in the tray, by the clock." />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource Label}" Text="EXTRA BOOST" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <DockPanel>
+                        <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding ExtraBoost}" VerticalAlignment="Top" Margin="0,2,0,0"
+                                  AutomationProperties.Name="Extra boost" />
+                        <StackPanel Margin="0,0,12,0">
+                            <TextBlock Text="Extra boost" />
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0">
+                                <Run Text="Also pauses Windows background services (" /><Run Text="{Binding BoostServicesText, Mode=OneWay}" /><Run
+                                     Text=") while you game. Windows asks for admin permission each time you click Start gaming. Auto mode skips this, so nothing pops up over your game." />
+                            </TextBlock>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource Label}" Text="ABOUT" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding Version}" />
+                        <TextBlock Margin="0,3,0,0" FontSize="12">
+                            <Hyperlink NavigateUri="https://github.com/bth0mp/VibeShift" RequestNavigate="Link_RequestNavigate"
+                                       Foreground="{DynamicResource HighlightBrush}">github.com/bth0mp/VibeShift</Hyperlink>
+                        </TextBlock>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,3,0,0" Text="MIT License. Nothing leaves your PC." />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 
     <Window.Resources>
@@ -136,6 +263,37 @@
                     <Setter TargetName="AppName" Property="Opacity" Value="0.6" />
                 </DataTrigger>
             </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Apps page row: toggle always shown, remove button on apps the user added -->
+        <DataTemplate x:Key="AppsRowTemplate">
+            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,9" Background="Transparent" ToolTip="{Binding Tooltip}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="22" Height="22" CornerRadius="6" Background="{Binding BadgeBrush}">
+                        <TextBlock Text="{Binding BadgeLetter}" Foreground="White" FontSize="11" FontWeight="Bold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="{Binding RamText}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,10,0"
+                               Visibility="{Binding ShowRam, Converter={StaticResource Visible}}" />
+                    <Border Grid.Column="2" Style="{StaticResource Pill}" VerticalAlignment="Center" Margin="0,0,10,0"
+                            Visibility="{Binding HasTag, Converter={StaticResource Visible}}">
+                        <TextBlock Text="{Binding Tag}" FontSize="10.5" Foreground="{DynamicResource MutedBrush}" />
+                    </Border>
+                    <CheckBox Grid.Column="3" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsOn}" VerticalAlignment="Center"
+                              AutomationProperties.Name="{Binding Name, StringFormat='Close {0} when gaming'}" />
+                    <Button Grid.Column="4" Style="{StaticResource IconButton}" Content="&#xE711;" Margin="6,0,-6,0" Click="RemoveApp_Click"
+                            ToolTip="Remove" AutomationProperties.Name="Remove app"
+                            Visibility="{Binding IsCustom, Converter={StaticResource Visible}}" />
+                </Grid>
+            </Border>
         </DataTemplate>
     </Window.Resources>
 </Window>

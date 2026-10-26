@@ -1,41 +1,169 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using VibeShift.Core.Games;
+using VibeShift.Core.Processes;
 using VibeShift.Core.State;
+using VibeShift.Core.Switching;
 
 namespace VibeShift;
 
 public partial class App : Application
 {
+    private readonly AutoModeTracker tracker = new(TimeSpan.FromSeconds(10));
+    private Mutex? instance;
+    private EventWaitHandle? showSignal;
+    private MainWindow? window;
+    private MainViewModel? vm;
+    private Tray? tray;
+    private GameWatcher? watcher;
+    private bool quitting, ticking;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Elevated Extra boost helper: do the one service job and leave.
+        if (Services.ParseHelperArgs(e.Args) is not null)
+        {
+            Shutdown(Services.RunHelper(e.Args));
+            return;
+        }
         if (Arg(e.Args, "--screenshot") is { } png)
         {
-            Screenshot(png, Arg(e.Args, "--theme") ?? "dark", Arg(e.Args, "--demo") ?? "coding");
+            Screenshot(png, Arg(e.Args, "--theme") ?? "dark", Arg(e.Args, "--demo") ?? "coding", Arg(e.Args, "--page") ?? "home");
             return;
         }
 
+        // One instance: a second launch just brings the first window forward.
+        instance = new Mutex(true, @"Local\VibeShift.Instance", out bool first);
+        showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\VibeShift.Show");
+        if (!first)
+        {
+            showSignal.Set();
+            Shutdown();
+            return;
+        }
+        new Thread(() =>
+        {
+            while (showSignal.WaitOne()) Dispatcher.BeginInvoke(ShowWindow);
+        }) { IsBackground = true, Name = "show-signal" }.Start();
+
         var store = JsonStore.Default;
         Log.Init(store.Dir);
+        DispatcherUnhandledException += (_, ev) => Log.Write("Unhandled: " + ev.Exception);
         var settings = store.LoadSettings();
         ThemeManager.Apply(settings.Theme);
-        var vm = new MainViewModel(store, settings);
-        var window = new MainWindow(vm);
-        window.Closed += (_, _) => Shutdown();
-        window.Show();
+        if (settings.StartWithWindows) StartupRegistration.Set(true); // refresh the path if the exe moved
+
+        // A leftover session.json means we crashed or rebooted mid-game: the view model opens in Gaming mode.
+        vm = new MainViewModel(store, settings);
+        window = new MainWindow(vm);
+        window.Closing += (_, ev) =>
+        {
+            if (quitting) return;
+            ev.Cancel = true;
+            window.Hide();
+        };
+        tray = new Tray(ShowWindow, () => vm.ToggleModeAsync(automatic: false), Quit);
+        tray.Update(vm.Mode);
+        vm.Switched += (mode, automatic) =>
+        {
+            tray.Update(mode);
+            if (!automatic) tracker.ManualSwitch(mode, vm.CurrentGamePids);
+        };
+        vm.SettingsChanged += RebuildWatcher;
+        RebuildWatcher();
+
+        if (!e.Args.Contains("--tray")) window.Show();
         _ = vm.RefreshAsync();
 
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        timer.Tick += async (_, _) =>
+        timer.Tick += async (_, _) => await TickAsync();
+        timer.Start();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        tray?.Dispose();
+        instance?.Dispose();
+        base.OnExit(e);
+    }
+
+    /// <summary>Refreshes the visible window and runs Auto mode. Does nothing while hidden with Auto mode off.</summary>
+    private async Task TickAsync()
+    {
+        if (ticking || vm is null || window is null || vm.IsBusy) return;
+        ticking = true;
+        try
         {
             if (window.IsVisible) await vm.RefreshAsync();
-        };
-        timer.Start();
+            if (vm.Settings.AutoMode && watcher is { } w)
+            {
+                var games = await Task.Run(() => w.Scan(ProcessSnapshot.Take()));
+                vm.CurrentGamePids = games;
+                // Automatic switches never show or activate the window; only the tray tooltip changes.
+                if (tracker.Update(games, vm.Mode, DateTime.UtcNow) != AutoAction.None) await vm.ToggleModeAsync(automatic: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Write("Tick failed: " + ex.Message);
+        }
+        finally
+        {
+            ticking = false;
+        }
+    }
+
+    private async void RebuildWatcher()
+    {
+        try
+        {
+            var games = vm!.Settings.MyGames.ToList();
+            var roots = await Task.Run(GameLibraries.Discover);
+            watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, HasVisibleWindow);
+        }
+        catch (Exception ex)
+        {
+            Log.Write("Game watcher rebuild failed: " + ex.Message);
+        }
+    }
+
+    private static bool HasVisibleWindow(int pid)
+    {
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            return p.MainWindowHandle != IntPtr.Zero;
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private void ShowWindow()
+    {
+        if (window is null) return;
+        window.Show();
+        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        window.Activate();
+        _ = vm?.RefreshAsync();
+    }
+
+    private void Quit()
+    {
+        quitting = true;
+        window?.Close();
+        Shutdown();
     }
 
     private static string? Arg(string[] args, string name)
@@ -45,12 +173,12 @@ public partial class App : Application
     }
 
     /// <summary>--screenshot: renders the window with the mockup's sample data to a 2x PNG and exits. Touches no processes.</summary>
-    private void Screenshot(string png, string theme, string demoMode)
+    private void Screenshot(string png, string theme, string demoMode, string page)
     {
         ThemeManager.Apply(theme == "light" ? ThemeChoice.Light : ThemeChoice.Dark);
-        var vm = new MainViewModel(new JsonStore(Path.GetTempPath()), new Settings(), demo: true);
-        vm.LoadDemo(demoMode == "gaming" ? Mode.Gaming : Mode.Coding);
-        var w = new MainWindow(vm)
+        var demoVm = new MainViewModel(new JsonStore(Path.GetTempPath()), new Settings(), demo: true);
+        demoVm.LoadDemo(demoMode == "gaming" ? Mode.Gaming : Mode.Coding);
+        var w = new MainWindow(demoVm)
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
             Left = -10000,
@@ -58,6 +186,7 @@ public partial class App : Application
             ShowInTaskbar = false,
             ShowActivated = false,
         };
+        w.ShowPage(page);
         w.ContentRendered += (_, _) =>
         {
             var root = (FrameworkElement)w.Content;
