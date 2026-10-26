@@ -209,7 +209,7 @@
                             <TextBlock Text="Extra boost" />
                             <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0">
                                 <Run Text="Also pauses Windows background services (" /><Run Text="{Binding BoostServicesText, Mode=OneWay}" /><Run
-                                     Text=") while you game. Windows asks for admin permission each time you click Start gaming. Auto mode skips this, so nothing pops up over your game." />
+                                     Text=") while you game. Windows asks for admin permission when you click Start gaming and again when you switch back. Auto mode skips this, so nothing pops up over your game." />
                             </TextBlock>
                         </StackPanel>
                     </DockPanel>

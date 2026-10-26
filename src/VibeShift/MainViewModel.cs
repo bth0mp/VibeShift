@@ -214,21 +214,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set { if (Set(ref busyText, value)) Raise(nameof(PrimaryText)); }
     }
 
+    private static readonly int MySessionId = GetSessionId();
+
+    private static int GetSessionId()
+    {
+        using var me = System.Diagnostics.Process.GetCurrentProcess();
+        return me.SessionId;
+    }
+
+    /// <summary>True when the leftover session was started by Auto mode (it can resume switching back).</summary>
+    public bool SessionIsAutomatic => session?.Automatic == true;
+
     public async Task RefreshAsync()
     {
         if (demo) return;
-        int self = Environment.ProcessId;
-        var entries = Switcher.Entries(Settings);
-        var (detected, avail, estimated) = await Task.Run(() =>
+        try
         {
-            var all = ProcessSnapshot.Take();
-            var det = SwitchPlanner.Detect(all, entries, ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
-                p => BlockList.IsBlocked(p.Name, null, p.Pid, self, new HashSet<int>()));
-            // The estimate only sums row RAM, so it doesn't need the (costly) per-process spare checks.
-            long est = SwitchPlanner.PlanGaming(all, det, Settings, automatic: false, self, (_, _) => false).EstimatedBytes;
-            return (det, ProcessQuery.AvailableRamBytes(), est);
-        });
-        Apply(entries, detected, avail, estimated);
+            int self = Environment.ProcessId;
+            int mySession = MySessionId;
+            var snapshot = Settings.Clone(); // the UI may edit Settings while this runs
+            var entries = Switcher.Entries(snapshot);
+            var (detected, avail, estimated) = await Task.Run(() =>
+            {
+                var all = ProcessSnapshot.Take();
+                // Same block rules as a real switch, so the numbers shown match what would happen.
+                var det = SwitchPlanner.Detect(all, entries, ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
+                    p => p.SessionId != mySession || BlockList.IsBlocked(p.Name, ProcessQuery.GetImagePath(p.Pid), p.Pid, self, new HashSet<int>()));
+                // The estimate only sums RAM, so it skips the (costly) per-process spare checks.
+                long est = SwitchPlanner.PlanGaming(all, det, snapshot, automatic: false, self, (_, _) => false).EstimatedBytes;
+                return (det, ProcessQuery.AvailableRamBytes(), est);
+            });
+            Apply(entries, detected, avail, estimated);
+        }
+        catch (Exception e)
+        {
+            Log.Write("Refresh failed: " + e.Message);
+        }
     }
 
     public async Task ToggleModeAsync(bool automatic)
@@ -242,7 +263,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 BusyText = "Switching...";
                 if (FindGames is { } find) CurrentGamePids = await Task.Run(find);
-                session = await switcher.StartGamingAsync(Settings, automatic, CurrentGamePids, progress);
+                session = await switcher.StartGamingAsync(Settings.Clone(), automatic, CurrentGamePids, progress);
                 failedReopen.Clear();
                 Mode = Mode.Gaming;
             }
@@ -250,7 +271,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 BusyText = "Switching back...";
                 var closed = session ?? new SessionState();
-                var failed = await switcher.BackToCodingAsync(Settings, closed, progress);
+                var failed = await switcher.BackToCodingAsync(Settings.Clone(), closed, progress);
                 failedReopen.Clear();
                 failedReopen.UnionWith(closed.Closed.Where(c => failed.Contains(c.Name)).Select(c => c.EntryId));
                 session = null;
@@ -261,12 +282,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch (Exception e)
         {
             Log.Write($"Switch failed: {e}");
+            // The switch may have got as far as saving session.json: follow the disk, so the reopen list
+            // isn't overwritten by the next switch and Back to vibe coding still works.
+            session = store.LoadSession();
+            Mode = session is null ? Mode.Coding : Mode.Gaming;
         }
         finally
         {
             IsBusy = false;
         }
-        await RefreshAsync();
+        await RefreshAsync(); // never throws
     }
 
     /// <summary>Saves a changed toggle and refreshes the CAN FREE estimate.</summary>
@@ -305,7 +330,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (IsGaming && closedIds.Contains(e.Id))
             {
                 row.IsDimmed = true;
-                row.Tag = e.Kind == EntryKind.Mcp ? "come back when their app restarts" : e.Reopen ? "reopens after" : "";
+                bool wslOnly = e.Kind == EntryKind.DockerWsl && session!.Closed.All(c => c.EntryId != e.Id);
+                row.Tag = e.Kind == EntryKind.Mcp ? "come back when their app restarts"
+                    : wslOnly ? "starts again when needed"
+                    : e.Reopen ? "reopens after" : "";
             }
             else
             {
@@ -321,9 +349,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         FreeRamText = Format.Bytes(avail);
         AppsText = $"{all.Count(r => r.IsRunning)} open";
-        ThirdValue = IsGaming
-            ? Format.Bytes(Math.Max(0, (session?.AvailAfter ?? 0) - (session?.AvailBefore ?? 0)))
-            : Format.Bytes(estimated);
+        ThirdValue = Format.Bytes(IsGaming ? session?.Freed ?? 0 : estimated);
     }
 
     /// <summary>Fills the mockup's sample numbers, for --screenshot.</summary>
@@ -383,6 +409,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         public event EventHandler? CanExecuteChanged { add { } remove { } }
         public bool CanExecute(object? parameter) => true;
-        public async void Execute(object? parameter) => await run();
+        public async void Execute(object? parameter)
+        {
+            try
+            {
+                await run();
+            }
+            catch (Exception e)
+            {
+                Log.Write("Command failed: " + e); // async void: an escaped exception would take the app down
+            }
+        }
     }
 }

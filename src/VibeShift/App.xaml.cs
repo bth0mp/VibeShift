@@ -31,8 +31,9 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Elevated Extra boost helper: do the one service job and leave.
-        if (Services.ParseHelperArgs(e.Args) is not null)
+        // Elevated Extra boost helper: do the one service job and leave. Malformed --services args exit with
+        // an error instead of falling through to a full (elevated) app start.
+        if (e.Args.Length > 0 && e.Args[0] == "--services")
         {
             Shutdown(Services.RunHelper(e.Args));
             return;
@@ -59,13 +60,18 @@ public partial class App : Application
 
         var store = JsonStore.Default;
         Log.Init(store.Dir);
-        DispatcherUnhandledException += (_, ev) => Log.Write("Unhandled: " + ev.Exception);
+        DispatcherUnhandledException += (_, ev) =>
+        {
+            Log.Write("Unhandled: " + ev.Exception);
+            ev.Handled = true; // a tray app that vanishes mid-game is worse than one that logged an error
+        };
         var settings = store.LoadSettings();
         ThemeManager.Apply(settings.Theme);
         if (settings.StartWithWindows) StartupRegistration.Set(true); // refresh the path if the exe moved
 
         // A leftover session.json means we crashed or rebooted mid-game: the view model opens in Gaming mode.
         vm = new MainViewModel(store, settings);
+        if (vm.SessionIsAutomatic) tracker.ResumeAutoSession(DateTime.UtcNow);
         window = new MainWindow(vm);
         window.Closing += (_, ev) =>
         {

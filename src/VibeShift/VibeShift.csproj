@@ -11,7 +11,7 @@
     <!-- PerMonitorV2 in app.manifest is for WPF; WinForms only supplies the tray icon -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Product>VibeShift</Product>
     <Description>One click from vibe coding to gaming, and back.</Description>
     <Copyright>Copyright (c) 2026 bth0mp</Copyright>

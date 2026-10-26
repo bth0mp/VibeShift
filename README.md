@@ -48,12 +48,13 @@ Closing the window keeps VibeShift running as a small icon by the clock. Right-c
 | Cursor | Yes | Yes |
 | Windsurf | Yes | Yes |
 | Microsoft Copilot | Yes | Yes |
+| Microsoft 365 Copilot | Yes | Yes |
 | Ollama | Yes | Yes |
 | LM Studio | Yes | Yes |
 | MCP servers | Yes | They come back when their app restarts |
 | VS Code | No | Yes |
 | Docker / WSL | No | Docker Desktop yes. WSL starts again by itself the next time something uses it |
-| Command-line AI agents (Claude Code, Codex CLI, Gemini CLI) | No | No. Closing one ends what it was doing, and it can't be reopened inside your terminal |
+| Command-line AI agents (Claude Code, Codex CLI, Gemini CLI, including npm installs) | No | No. Closing one ends what it was doing, and it can't be reopened inside your terminal |
 
 - **When apps show up.** An app appears in VibeShift once it has seen it running. Use **+ Add app** to add any other program.
 - **MCP servers.** VibeShift spots these by their command line (`mcp`, `modelcontextprotocol`, `desktop-commander`). Other Node or Python processes, such as language servers, dev servers and your own scripts, are left alone. With the MCP row switched on, every MCP server stops, including ones used by apps you keep open. Those apps get their tools back when they restart.
@@ -78,7 +79,7 @@ Automatic switches never open the VibeShift window or pop anything up over your 
 
 ## Extra boost
 
-Off by default. When it's on, **Start gaming** also pauses two Windows background services: SysMain (memory prefetching) and Windows Search indexing. **Back to vibe coding** restarts them. Pausing services needs admin permission, so Windows asks each time you click Start gaming. Auto mode skips this step so nothing pops up mid-game.
+Off by default. When it's on, **Start gaming** also pauses two Windows background services: SysMain (memory prefetching) and Windows Search indexing. **Back to vibe coding** restarts them. Pausing and restarting services needs admin permission, so Windows asks when you click Start gaming and again when you switch back. Auto mode skips this step so nothing pops up mid-game.
 
 ## Privacy and permissions
 
