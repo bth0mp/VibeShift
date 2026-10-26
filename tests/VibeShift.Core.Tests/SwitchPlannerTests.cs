@@ -85,6 +85,33 @@ public class SwitchPlannerTests
         Assert.Equal(new[] { 1, 2, 3 }, Plan(all).Close.Single().KillPids);
     }
 
+    [Fact] // 1.0.1 review #3: parents first across rows too (an MCP child of VS Code dies after VS Code)
+    public void Kill_order_is_parents_first_across_rows()
+    {
+        var all = new[] { P(1, 0, "Code"), P(2, 1, "node") };
+        paths[1] = @"C:\x\Code.exe";
+        cmds[2] = "node mcp-server-x";
+        settings.Toggles["vscode"] = true;
+        Assert.Equal(new[] { 1, 2 }, SwitchPlanner.KillOrder(all, Plan(all)));
+    }
+
+    [Fact] // 1.0.1 review #4: a row's own process is never spared as a "separate app"
+    public void Rows_own_processes_are_never_spared_as_separate_apps()
+    {
+        var all = new[] { P(1, 0, "com.docker.backend"), P(2, 1, "Docker Desktop") };
+        settings.Toggles["docker-wsl"] = true;
+        var kill = Plan(all, spare: (node, _) => node.Name == "Docker Desktop").Close.Single().KillPids;
+        Assert.Equal(new[] { 1, 2 }, kill);
+    }
+
+    [Fact] // 1.0.1 review #6: a Hyper-V "vmmem" isn't WSL's when vmmemWSL exists
+    public void Hyper_V_vmmem_is_not_counted_next_to_vmmemWSL()
+    {
+        settings.Toggles["docker-wsl"] = true;
+        var all = new[] { P(1, 0, "vmmemWSL", bytes: 1000), P(2, 0, "vmmem", bytes: 3000), P(3, 0, "wslhost") };
+        Assert.Equal(1000, Plan(all).EstimatedBytes);
+    }
+
     [Fact] // M7: MCP servers under Claude belong to both rows but free their RAM once
     public void Estimate_counts_each_process_once_even_when_rows_nest()
     {

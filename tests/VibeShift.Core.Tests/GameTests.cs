@@ -49,6 +49,14 @@ public class GameTests
         Assert.True(GameRules.IsGame(@"C:\Riot Games\VALORANT\live\VALORANT.exe", new[] { Root },
             new[] { @"c:\riot games\valorant\live\valorant.exe" }, false));
 
+    [Fact] // 1.0.1 review #12: another signed-in user's game doesn't switch this user's apps
+    public void Watcher_ignores_other_sessions()
+    {
+        var w = new GameWatcher(new[] { Root }, Array.Empty<string>(), _ => Root + @"\G\g.exe", _ => true, sessionId: 1);
+        Assert.Empty(w.Scan(new[] { new ProcInfo(50, 1, "g", 10, 100, SessionId: 2) }));
+        Assert.Equal(new[] { 51 }, w.Scan(new[] { new ProcInfo(51, 1, "g", 10, 100, SessionId: 1) }));
+    }
+
     [Fact]
     public void Watcher_detects_game_once_its_window_appears_and_caches_paths()
     {

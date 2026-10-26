@@ -24,7 +24,7 @@ public static class Log
                     File.Move(path, path + ".old", overwrite: true);
                 File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {message}{Environment.NewLine}");
             }
-            catch (IOException)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 // logging must never take the app down
             }

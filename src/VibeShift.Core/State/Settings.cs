@@ -8,6 +8,9 @@ public enum ThemeChoice { System, Dark, Light }
 
 public sealed class Settings
 {
+    /// <summary>0 = written by 1.0.0 (or new). 2 = 1.0.1+, where Microsoft 365 Copilot got its own row.</summary>
+    public int SchemaVersion { get; set; }
+
     public ThemeChoice Theme { get; set; } = ThemeChoice.System;
 
     /// <summary>Entry id -> on/off. Missing ids use the entry's default.</summary>
@@ -25,6 +28,16 @@ public sealed class Settings
     public List<string> BoostServices { get; set; } = ["SysMain", "WSearch"];
 
     public bool IsOn(CatalogEntry e) => Toggles.TryGetValue(e.Id, out var on) ? on : e.DefaultOn;
+
+    /// <summary>Drops null list entries from a hand-edited file and upgrades older files' choices.</summary>
+    internal void Normalize()
+    {
+        foreach (var list in new[] { KnownApps, CustomApps, MyGames, BoostServices }) list.RemoveAll(x => x is null);
+        // 1.0.0 covered the Microsoft 365 Copilot app under the Copilot toggle; keep the user's choice for it.
+        if (SchemaVersion < 2 && Toggles.TryGetValue("copilot", out var on) && !Toggles.ContainsKey("m365copilot"))
+            Toggles["m365copilot"] = on;
+        SchemaVersion = 2;
+    }
 
     /// <summary>An independent copy, so background work never reads a list the UI is editing.</summary>
     public Settings Clone() => JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(this))!;
@@ -58,4 +71,12 @@ public sealed class SessionState
     /// </summary>
     [JsonIgnore]
     public long Freed => Math.Max(Math.Max(0, AvailAfter - AvailBefore), KilledBytes);
+
+    /// <summary>Drops null list entries from a hand-edited file (they'd throw on every switch back).</summary>
+    internal void Normalize()
+    {
+        Closed.RemoveAll(c => c is null);
+        StoppedServices.RemoveAll(x => x is null);
+        ClosedEntryIds.RemoveAll(x => x is null);
+    }
 }

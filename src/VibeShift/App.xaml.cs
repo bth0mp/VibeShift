@@ -25,7 +25,7 @@ public partial class App : Application
     private MainViewModel? vm;
     private Tray? tray;
     private GameWatcher? watcher;
-    private bool quitting, ticking;
+    private bool quitting, ticking, started;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -64,6 +64,9 @@ public partial class App : Application
         {
             Log.Write("Unhandled: " + ev.Exception);
             ev.Handled = true; // a tray app that vanishes mid-game is worse than one that logged an error
+            // ...but if startup itself failed, there's no window or tray: exit rather than linger invisibly,
+            // holding the single-instance lock so every relaunch does nothing.
+            if (!started) Shutdown(1);
         };
         var settings = store.LoadSettings();
         ThemeManager.Apply(settings.Theme);
@@ -98,6 +101,7 @@ public partial class App : Application
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
+        started = true;
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -139,7 +143,8 @@ public partial class App : Application
         {
             var games = vm!.Settings.MyGames.ToList();
             var roots = await Task.Run(GameLibraries.Discover);
-            watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, ProcessQuery.HasVisibleWindow);
+            using var me = Process.GetCurrentProcess();
+            watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, ProcessQuery.HasVisibleWindow, me.SessionId);
         }
         catch (Exception ex)
         {

@@ -286,6 +286,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             // isn't overwritten by the next switch and Back to vibe coding still works.
             session = store.LoadSession();
             Mode = session is null ? Mode.Coding : Mode.Gaming;
+            Switched?.Invoke(Mode, automatic); // keep the tray in step with the mode we ended up in
         }
         finally
         {

@@ -81,8 +81,11 @@ public static class SwitchPlanner
             // a broken app we couldn't reopen, so leave the whole app alone.
             if (d.Roots.Any(r => selfChain.Contains(r.Pid))) continue;
             // Parents first: a supervisor that's already dead can't respawn the children killed after it.
+            // The row's own processes are never spared (Docker Desktop's window under its backend isn't a separate app).
+            var own = d.Matched.Select(m => m.Pid).ToHashSet();
             var kill = d.Roots
-                .SelectMany(r => ProcessTree.Descendants(all, r.Pid, node => offRoots.Contains(node.Pid) || spare(node, r)).Reverse())
+                .SelectMany(r => ProcessTree.Descendants(all, r.Pid,
+                    node => offRoots.Contains(node.Pid) || (!own.Contains(node.Pid) && spare(node, r))).Reverse())
                 .Select(p => p.Pid)
                 .Distinct()
                 .ToList();
@@ -119,6 +122,15 @@ public static class SwitchPlanner
         };
     }
 
+    /// <summary>
+    /// Every PID to kill, parents before children across all rows (an MCP server under VS Code dies after
+    /// VS Code), so no supervisor outlives the children it could respawn. Ties keep each row's own order.
+    /// </summary>
+    public static IReadOnlyList<int> KillOrder(IReadOnlyList<ProcInfo> all, GamingPlan plan) =>
+        plan.Close.SelectMany(t => t.KillPids).Distinct()
+            .OrderBy(pid => ProcessTree.Ancestors(all, pid).Count)
+            .ToList();
+
     /// <summary>What to reopen, in closing order, minus apps that are already running again.</summary>
     public static IReadOnlyList<ClosedApp> PlanReopen(SessionState session, IReadOnlyList<Detected> runningNow)
     {
@@ -138,14 +150,13 @@ public static class SwitchPlanner
     }
 
     /// <summary>
-    /// The WSL VM process: "vmmemWSL", or plain "vmmem" on older Windows 10 WSL. Hyper-V VMs are also
-    /// "vmmem", so that name only counts while WSL itself is running (wslhost present).
+    /// The WSL VM process: "vmmemWSL", or plain "vmmem" on older Windows 10 WSL. Hyper-V VMs and Windows Sandbox
+    /// are also "vmmem", so that name only counts when there's no vmmemWSL and WSL itself is running (wslhost).
     /// </summary>
     private static List<ProcInfo> WslVm(IReadOnlyList<ProcInfo> all)
     {
-        bool wslRunning = all.Any(p => p.Name.Equals("wslhost", StringComparison.OrdinalIgnoreCase));
-        return all.Where(p => p.Name.Equals("vmmemWSL", StringComparison.OrdinalIgnoreCase)
-                              || (wslRunning && p.Name.Equals("vmmem", StringComparison.OrdinalIgnoreCase)))
-            .ToList();
+        var modern = all.Where(p => p.Name.Equals("vmmemWSL", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (modern.Count > 0 || !all.Any(p => p.Name.Equals("wslhost", StringComparison.OrdinalIgnoreCase))) return modern;
+        return all.Where(p => p.Name.Equals("vmmem", StringComparison.OrdinalIgnoreCase)).ToList();
     }
 }

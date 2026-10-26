@@ -41,7 +41,8 @@ public sealed class GameWatcher(
     IReadOnlyList<string> roots,
     IReadOnlyList<string> myGames,
     Func<int, string?> imagePath,
-    Func<int, bool> hasVisibleWindow)
+    Func<int, bool> hasVisibleWindow,
+    int? sessionId = null) // only this logon session's games count; null = any (tests)
 {
     private readonly Dictionary<(int Pid, long CreateTime), string?> paths = [];
 
@@ -57,6 +58,7 @@ public sealed class GameWatcher(
         var games = new List<int>();
         foreach (var p in snapshot)
         {
+            if (sessionId is { } mine && p.SessionId != mine) continue;
             var key = (p.Pid, p.CreateTime);
             live.Add(key);
             if (!paths.TryGetValue(key, out var path)) paths[key] = path = imagePath(p.Pid);

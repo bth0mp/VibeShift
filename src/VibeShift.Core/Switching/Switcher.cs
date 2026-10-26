@@ -58,7 +58,7 @@ public sealed class Switcher(JsonStore store)
         var byPid = new Dictionary<int, ProcInfo>();
         foreach (var p in all) byPid.TryAdd(p.Pid, p);
 
-        var targets = plan.Close.SelectMany(t => t.KillPids).Distinct().Where(byPid.ContainsKey).Select(pid => byPid[pid]).ToList();
+        var targets = SwitchPlanner.KillOrder(all, plan).Where(byPid.ContainsKey).Select(pid => byPid[pid]).ToList();
         if (plan.Close.Count > 0)
         {
             int n = plan.Close.Count;
@@ -81,6 +81,7 @@ public sealed class Switcher(JsonStore store)
             {
                 Step("stop services", () => Services.RunElevated("stop", running));
                 session.StoppedServices.AddRange(running.Where(name => !Services.IsRunning(name)));
+                store.SaveSession(session); // record paused services at once, so they're restarted whatever happens next
             }
         }
 
@@ -108,14 +109,18 @@ public sealed class Switcher(JsonStore store)
 
         var toOpen = SwitchPlanner.PlanReopen(session, Running());
         var failed = new List<string>();
-        var started = new List<ClosedApp>();
+        var viaShell = new List<ClosedApp>();
+        var known = Entries(s).Select(e => e.Id).ToHashSet();
         if (toOpen.Count > 0) progress?.Report($"Reopening {toOpen.Count} app{(toOpen.Count == 1 ? "" : "s")}...");
         foreach (var app in toOpen)
         {
             try
             {
-                using var _ = Process.Start(ReopenTarget.ToStartInfo(app, elevated: Environment.IsPrivilegedProcess));
-                started.Add(app);
+                var start = ReopenTarget.ToStartInfo(app, elevated: Environment.IsPrivilegedProcess);
+                using var _ = Process.Start(start);
+                // A direct start throws when it fails; one handed to the shell always "succeeds", so check those.
+                // (An app whose row was removed while gaming can't be recognised, so it isn't checked.)
+                if (start.FileName == "explorer.exe" && known.Contains(app.EntryId)) viaShell.Add(app);
             }
             catch (Exception e) when (e is Win32Exception or InvalidOperationException or ArgumentException or FileNotFoundException)
             {
@@ -124,9 +129,9 @@ public sealed class Switcher(JsonStore store)
             }
         }
 
-        // A Store app launched through the shell "succeeds" even when it can't start, so confirm each one appears.
+        // Confirm each shell launch actually produced the app.
         var deadline = DateTime.UtcNow.AddSeconds(10);
-        var missing = started;
+        var missing = viaShell;
         while (missing.Count > 0)
         {
             missing = SwitchPlanner.PlanReopen(new SessionState { Closed = missing.ToList() }, Running()).ToList();
@@ -155,8 +160,13 @@ public sealed class Switcher(JsonStore store)
             Step($"close {p.ProcessName}", () => accepted = p.CloseMainWindow());
             if (accepted) closing.Add(p);
         }
-        var deadline = DateTime.UtcNow.AddSeconds(seconds);
-        while (DateTime.UtcNow < deadline && closing.Any(p => !HasExited(p))) Thread.Sleep(250);
+        // An app that answered by hiding its window to the tray (still running, no window after a second)
+        // isn't going to close; stop waiting for it.
+        var started = DateTime.UtcNow;
+        var deadline = started.AddSeconds(seconds);
+        bool StillClosing(Process p) =>
+            !HasExited(p) && (DateTime.UtcNow - started < TimeSpan.FromSeconds(1) || ProcessQuery.HasVisibleWindow(p.Id));
+        while (DateTime.UtcNow < deadline && closing.Any(StillClosing)) Thread.Sleep(250);
         foreach (var p in procs) p.Dispose();
     }
 

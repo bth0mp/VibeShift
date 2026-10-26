@@ -83,6 +83,29 @@ public sealed class StateTests : IDisposable
         Assert.True(File.Exists(Path.Combine(dir, "session.json.bad")));
     }
 
+    [Fact] // 1.0.1 review #1: 1.0.0 covered M365 Copilot under the Copilot toggle; an upgrade keeps that choice
+    public void Upgraded_copilot_choice_carries_over_to_m365_copilot()
+    {
+        var m365 = AppCatalog.BuiltIn.Single(e => e.Id == "m365copilot");
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"Toggles\": {\"copilot\": false}}");
+        Assert.False(Store().LoadSettings().IsOn(m365));
+
+        // A 1.0.1 user who switched Copilot off later keeps M365 Copilot's own default.
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"SchemaVersion\": 2, \"Toggles\": {\"copilot\": false}}");
+        Assert.True(Store().LoadSettings().IsOn(m365));
+    }
+
+    [Fact] // 1.0.1 review #10: null list elements load fine and then throw on every switch
+    public void Null_list_elements_are_dropped()
+    {
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"CustomApps\": [null, \"C:\\\\a.exe\"]}");
+        File.WriteAllText(Path.Combine(dir, "session.json"), "{\"Closed\": [null], \"ClosedEntryIds\": [null, \"mcp\"]}");
+        Assert.Equal(new[] { @"C:\a.exe" }, Store().LoadSettings().CustomApps);
+        var session = Store().LoadSession()!;
+        Assert.Empty(session.Closed);
+        Assert.Equal(new[] { "mcp" }, session.ClosedEntryIds);
+    }
+
     [Fact] // M3: background work reads a snapshot, not the live object the UI edits
     public void Clone_is_independent()
     {

@@ -22,11 +22,21 @@ public sealed class JsonStore(string dir)
     private string SettingsPath => Path.Combine(dir, "settings.json");
     private string SessionPath => Path.Combine(dir, "session.json");
 
-    public Settings LoadSettings() => Load<Settings>(SettingsPath) ?? new Settings();
+    public Settings LoadSettings()
+    {
+        var s = Load<Settings>(SettingsPath) ?? new Settings();
+        s.Normalize();
+        return s;
+    }
 
     public void SaveSettings(Settings s) => Save(SettingsPath, s);
 
-    public SessionState? LoadSession() => Load<SessionState>(SessionPath);
+    public SessionState? LoadSession()
+    {
+        var s = Load<SessionState>(SessionPath);
+        s?.Normalize();
+        return s;
+    }
 
     public void SaveSession(SessionState s) => Save(SessionPath, s);
 
@@ -35,21 +45,37 @@ public sealed class JsonStore(string dir)
     private static T? Load<T>(string path) where T : class
     {
         if (!File.Exists(path)) return null;
-        try
+        for (int attempt = 1; ; attempt++)
         {
-            return JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options);
-        }
-        catch (JsonException e)
-        {
-            File.Move(path, path + ".bad", overwrite: true);
-            Log.Write($"Unreadable {Path.GetFileName(path)} moved to .bad: {e.Message}");
-            return null;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Locked or denied isn't corrupt: leave the file alone and carry on with defaults.
-            Log.Write($"Couldn't read {Path.GetFileName(path)}: {e.Message}");
-            return null;
+            try
+            {
+                return JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options);
+            }
+            catch (JsonException e)
+            {
+                try
+                {
+                    File.Move(path, path + ".bad", overwrite: true);
+                }
+                catch (Exception moveError) when (moveError is IOException or UnauthorizedAccessException)
+                {
+                    // can't set it aside; defaults still apply
+                }
+                Log.Write($"Unreadable {Path.GetFileName(path)} set aside as .bad: {e.Message}");
+                return null;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Locked (e.g. by antivirus or a sync tool) isn't corrupt: retry briefly, then use defaults
+                // and leave the file alone.
+                if (attempt < 5)
+                {
+                    Thread.Sleep(200);
+                    continue;
+                }
+                Log.Write($"Couldn't read {Path.GetFileName(path)}: {e.Message}");
+                return null;
+            }
         }
     }
 

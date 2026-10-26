@@ -72,6 +72,11 @@ public class CatalogTests
     public void Npm_installed_agents_are_cli_agents(string cmd) =>
         Assert.Equal("cli-agents", AppCatalog.Match(new ProcInfo(42, 1, "node", 10, 1), AppCatalog.BuiltIn, _ => null, _ => cmd)?.Id);
 
+    [Fact] // 1.0.1 review #5: updating an agent with npm isn't running the agent
+    public void Installing_an_agent_with_npm_is_not_the_agent() =>
+        Assert.Null(AppCatalog.Match(new ProcInfo(42, 1, "node", 10, 1), AppCatalog.BuiltIn, _ => null,
+            _ => "node C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js install -g @anthropic-ai/claude-code"));
+
     [Fact]
     public void Mcp_entry_matches_through_command_line()
     {
