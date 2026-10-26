@@ -37,6 +37,13 @@ public sealed class AutoModeTracker(TimeSpan backDelay)
         return AutoAction.BackToCoding;
     }
 
+    /// <summary>After a crash or reboot mid auto-session, keep the right to switch back by itself.</summary>
+    public void ResumeAutoSession(DateTime nowUtc)
+    {
+        autoOwned = true;
+        lastGameSeen = nowUtc;
+    }
+
     public void ManualSwitch(Mode newMode, IReadOnlyCollection<int> gamePidsNow)
     {
         autoOwned = false;

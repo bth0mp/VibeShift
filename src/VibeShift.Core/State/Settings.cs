@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using VibeShift.Core.Catalog;
 
 namespace VibeShift.Core.State;
@@ -23,6 +25,9 @@ public sealed class Settings
     public List<string> BoostServices { get; set; } = ["SysMain", "WSearch"];
 
     public bool IsOn(CatalogEntry e) => Toggles.TryGetValue(e.Id, out var on) ? on : e.DefaultOn;
+
+    /// <summary>An independent copy, so background work never reads a list the UI is editing.</summary>
+    public Settings Clone() => JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(this))!;
 }
 
 public sealed record ClosedApp(string EntryId, string Name, string? ExePath, string? Aumid);
@@ -43,4 +48,14 @@ public sealed class SessionState
 
     /// <summary>Every entry closed, including MCP and CLI rows that never reopen; drives row tags.</summary>
     public List<string> ClosedEntryIds { get; set; } = [];
+
+    /// <summary>Private RAM of the processes actually killed.</summary>
+    public long KilledBytes { get; set; }
+
+    /// <summary>
+    /// What the FREED tile shows: the measured gain in free RAM, or what was killed if that's larger
+    /// (a game loading during the measurement can eat the measured gain).
+    /// </summary>
+    [JsonIgnore]
+    public long Freed => Math.Max(Math.Max(0, AvailAfter - AvailBefore), KilledBytes);
 }

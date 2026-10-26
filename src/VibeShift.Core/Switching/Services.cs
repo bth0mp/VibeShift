@@ -13,6 +13,9 @@ public static class Services
 {
     private const int ErrorCancelled = 1223;
 
+    /// <summary>The only services the elevated helper will touch, whatever settings.json says.</summary>
+    private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase) { "SysMain", "WSearch" };
+
     public static bool IsRunning(string name)
     {
         try
@@ -30,7 +33,7 @@ public static class Services
     {
         if (args.Length != 3 || args[0] != "--services" || args[1] is not ("stop" or "start")) return null;
         var names = args[2].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return names.Length == 0 ? null : (args[1], names);
+        return names.Length == 0 || !names.All(Allowed.Contains) ? null : (args[1], names);
     }
 
     /// <summary>The elevated side. Exit 0 if every service reached the wanted state.</summary>

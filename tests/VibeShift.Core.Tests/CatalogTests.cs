@@ -54,6 +54,24 @@ public class CatalogTests
     [InlineData("node", "node C:\\x\\weather-mcp\\index.js", true)]
     public void Mcp_matching(string name, string? cmd, bool expected) => Assert.Equal(expected, McpMatcher.IsMcp(name, cmd));
 
+    [Fact] // M12: command lines cost a process handle; only runtimes need one
+    public void Non_runtime_processes_never_have_their_command_line_read()
+    {
+        int calls = 0;
+        AppCatalog.Match(new ProcInfo(42, 1, "notepad2", 10, 1), AppCatalog.BuiltIn, _ => null, _ => { calls++; return null; });
+        Assert.Equal(0, calls);
+    }
+
+    [Fact] // M12: custom entries read file version info once, not every refresh
+    public void Custom_entries_are_cached() => Assert.Same(AppCatalog.Custom(@"C:\T\x.exe"), AppCatalog.Custom(@"C:\T\x.exe"));
+
+    [Theory] // M13: npm-installed agents run as node; they're CLI agents, not MCP servers
+    [InlineData("node \"C:\\Users\\u\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js\" --mcp-config m.json")]
+    [InlineData("node C:/npm/node_modules/@google/gemini-cli/dist/index.js")]
+    [InlineData("node C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js")]
+    public void Npm_installed_agents_are_cli_agents(string cmd) =>
+        Assert.Equal("cli-agents", AppCatalog.Match(new ProcInfo(42, 1, "node", 10, 1), AppCatalog.BuiltIn, _ => null, _ => cmd)?.Id);
+
     [Fact]
     public void Mcp_entry_matches_through_command_line()
     {

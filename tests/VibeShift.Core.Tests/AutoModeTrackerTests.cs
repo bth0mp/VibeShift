@@ -40,6 +40,14 @@ public class AutoModeTrackerTests
         Assert.Equal(AutoAction.StartGaming, T.Update(new[] { 7, 9 }, Mode.Coding, t0.AddSeconds(6)));
     }
 
+    [Fact] // M5: after a crash mid auto-session, Auto mode still switches back by itself
+    public void Resumed_auto_session_switches_back_after_quiet_delay()
+    {
+        T.ResumeAutoSession(t0);
+        Assert.Equal(AutoAction.None, T.Update(None, Mode.Gaming, t0.AddSeconds(5)));
+        Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddSeconds(11)));
+    }
+
     [Fact]
     public void Manual_gaming_never_auto_returns()
     {

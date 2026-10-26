@@ -13,6 +13,7 @@ public class ProcessQueryTests
         Assert.Equal(me.StartTime.ToFileTimeUtc(), p.CreateTime); // proves struct offsets
         Assert.True(p.PrivateBytes > 0);
         Assert.True(p.ParentPid > 0);
+        Assert.Equal(me.SessionId, p.SessionId); // M14: proves the SessionId offset
     }
 
     [Fact]

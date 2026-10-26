@@ -10,6 +10,8 @@ public sealed class JsonStore(string dir)
     {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
+        // "Closed": null would load fine and then throw on every click; treat it as a corrupt file instead.
+        RespectNullableAnnotations = true,
     };
 
     public static JsonStore Default { get; } =
@@ -43,13 +45,23 @@ public sealed class JsonStore(string dir)
             Log.Write($"Unreadable {Path.GetFileName(path)} moved to .bad: {e.Message}");
             return null;
         }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Locked or denied isn't corrupt: leave the file alone and carry on with defaults.
+            Log.Write($"Couldn't read {Path.GetFileName(path)}: {e.Message}");
+            return null;
+        }
     }
 
     private void Save<T>(string path, T value)
     {
         Directory.CreateDirectory(dir);
         string tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(value, Options));
+        using (var file = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            JsonSerializer.Serialize(file, value, Options);
+            file.Flush(flushToDisk: true); // a power cut mid-game must not leave an empty session.json
+        }
         File.Move(tmp, path, overwrite: true);
     }
 }

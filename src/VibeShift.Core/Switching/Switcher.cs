@@ -14,7 +14,7 @@ public sealed class Switcher(JsonStore store)
 {
     /// <summary>The user's own apps first, so a custom exe that shares a name with a built-in wins.</summary>
     public static IReadOnlyList<CatalogEntry> Entries(Settings s) =>
-        s.CustomApps.Select(AppCatalog.Custom).Concat(AppCatalog.BuiltIn).ToList();
+        s.CustomApps.Select(AppCatalog.Custom).Concat(AppCatalog.BuiltIn).DistinctBy(e => e.Id).ToList();
 
     public Task<SessionState> StartGamingAsync(Settings s, bool automatic, IReadOnlyCollection<int> gamePids, IProgress<string>? progress) =>
         Task.Run(() => StartGaming(s, automatic, gamePids, progress));

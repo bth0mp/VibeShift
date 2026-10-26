@@ -15,6 +15,15 @@ public static partial class McpMatcher
     [GeneratedRegex("(?<![a-z])mcp(?![a-z])|modelcontextprotocol|desktop-commander", RegexOptions.IgnoreCase)]
     private static partial Regex Pattern();
 
+    // npm-installed AI agents run as node; they are command-line agents, not MCP servers.
+    [GeneratedRegex(@"@anthropic-ai[\\/]claude-code|@google[\\/]gemini-cli|@openai[\\/]codex", RegexOptions.IgnoreCase)]
+    private static partial Regex NpmAgent();
+
+    public static bool IsRuntime(string name) => Runtimes.Contains(name);
+
     public static bool IsMcp(string name, string? commandLine) =>
-        commandLine is not null && Runtimes.Contains(name) && Pattern().IsMatch(commandLine);
+        commandLine is not null && IsRuntime(name) && Pattern().IsMatch(commandLine) && !NpmAgent().IsMatch(commandLine);
+
+    public static bool IsNpmAgent(string name, string? commandLine) =>
+        commandLine is not null && name.Equals("node", StringComparison.OrdinalIgnoreCase) && NpmAgent().IsMatch(commandLine);
 }

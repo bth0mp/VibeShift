@@ -28,7 +28,8 @@ public static class AppCatalog
         new("chatgpt", "ChatGPT", EntryKind.App, ["ChatGPT"], true, true, "#10a37f"),
         new("cursor", "Cursor", EntryKind.App, ["Cursor"], true, true, "#3b82f6"),
         new("windsurf", "Windsurf", EntryKind.App, ["Windsurf"], true, true, "#14b8a6"),
-        new("copilot", "Copilot", EntryKind.App, ["Copilot", "M365Copilot"], true, true, "#0ea5e9"),
+        new("copilot", "Copilot", EntryKind.App, ["Copilot"], true, true, "#0ea5e9"),
+        new("m365copilot", "Microsoft 365 Copilot", EntryKind.App, ["M365Copilot"], true, true, "#2563eb"),
         new("ollama", "Ollama", EntryKind.App, ["ollama app", "ollama"], true, true, "#6b7280"),
         new("lmstudio", "LM Studio", EntryKind.App, ["LM Studio", "lms"], true, true, "#6366f1"),
         new("mcp", "MCP servers", EntryKind.Mcp, [], true, false, "#a78bfa"),
@@ -38,7 +39,13 @@ public static class AppCatalog
             PathExcludes: ClaudeDesktopPaths),
     ];
 
-    public static CatalogEntry Custom(string exePath)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CatalogEntry> CustomCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A row for an exe the user added. Cached per path: reading version info every refresh is wasted I/O.</summary>
+    public static CatalogEntry Custom(string exePath) => CustomCache.GetOrAdd(exePath, CreateCustom);
+
+    private static CatalogEntry CreateCustom(string exePath)
     {
         string name = Path.GetFileNameWithoutExtension(exePath);
         try
@@ -56,15 +63,17 @@ public static class AppCatalog
 
     public static CatalogEntry? Match(ProcInfo p, IReadOnlyList<CatalogEntry> entries, Func<int, string?> imagePath, Func<int, string?> commandLine)
     {
-        string? path = null;
-        bool pathRead = false;
+        string? path = null, cmd = null;
+        bool pathRead = false, cmdRead = false;
         foreach (var e in entries)
         {
+            // Command lines are only read for script runtimes (node, python...), never for every process.
             if (e.Kind == EntryKind.Mcp)
             {
-                if (McpMatcher.IsMcp(p.Name, commandLine(p.Pid))) return e;
+                if (McpMatcher.IsRuntime(p.Name) && McpMatcher.IsMcp(p.Name, Cmd())) return e;
                 continue;
             }
+            if (e.Kind == EntryKind.CliAgents && McpMatcher.IsRuntime(p.Name) && McpMatcher.IsNpmAgent(p.Name, Cmd())) return e;
             if (!e.ProcessNames.Contains(p.Name, StringComparer.OrdinalIgnoreCase)) continue;
             if (e.PathContains is null && e.PathExcludes is null) return e;
 
@@ -75,5 +84,11 @@ public static class AppCatalog
             return e;
         }
         return null;
+
+        string? Cmd()
+        {
+            if (!cmdRead) { cmd = commandLine(p.Pid); cmdRead = true; }
+            return cmd;
+        }
     }
 }

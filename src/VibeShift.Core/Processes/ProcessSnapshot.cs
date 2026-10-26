@@ -4,8 +4,11 @@ using VibeShift.Core.Native;
 
 namespace VibeShift.Core.Processes;
 
-/// <summary>Name is the image file name without ".exe"; PrivateBytes is the private working set; CreateTime is FILETIME UTC.</summary>
-public sealed record ProcInfo(int Pid, int ParentPid, string Name, long PrivateBytes, long CreateTime);
+/// <summary>
+/// Name is the image file name without ".exe"; PrivateBytes is the private working set; CreateTime is FILETIME UTC;
+/// SessionId is the Windows logon session (other users' processes are never VibeShift's to touch).
+/// </summary>
+public sealed record ProcInfo(int Pid, int ParentPid, string Name, long PrivateBytes, long CreateTime, int SessionId = 0);
 
 public static class ProcessSnapshot
 {
@@ -55,7 +58,8 @@ public static class ProcessSnapshot
                     (int)*(nint*)(p + 88),                      // InheritedFromUniqueProcessId
                     image,
                     *(long*)(p + 8),                            // WorkingSetPrivateSize
-                    *(long*)(p + 32)));                         // CreateTime
+                    *(long*)(p + 32),                           // CreateTime
+                    *(int*)(p + 100)));                         // SessionId
             }
             uint next = *(uint*)p;                              // NextEntryOffset
             if (next == 0) break;

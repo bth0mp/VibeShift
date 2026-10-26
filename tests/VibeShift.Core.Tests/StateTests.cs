@@ -65,6 +65,45 @@ public sealed class StateTests : IDisposable
         Assert.True(File.Exists(Path.Combine(dir, "session.json.bad")));
     }
 
+    [Fact] // M2: a locked file isn't corrupt, and must not crash startup
+    public void Locked_settings_file_gives_defaults_without_crashing()
+    {
+        var path = Path.Combine(dir, "settings.json");
+        File.WriteAllText(path, "{}");
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.Equal(5, Store().LoadSettings().ForceCloseSeconds);
+        Assert.False(File.Exists(path + ".bad"));
+    }
+
+    [Fact] // M2: valid JSON with a null list would otherwise throw later on every click
+    public void Null_collections_are_treated_as_corrupt()
+    {
+        File.WriteAllText(Path.Combine(dir, "session.json"), "{\"Closed\": null}");
+        Assert.Null(Store().LoadSession());
+        Assert.True(File.Exists(Path.Combine(dir, "session.json.bad")));
+    }
+
+    [Fact] // M3: background work reads a snapshot, not the live object the UI edits
+    public void Clone_is_independent()
+    {
+        var s = new Settings();
+        s.Toggles["mcp"] = false;
+        s.CustomApps.Add("a");
+        var c = s.Clone();
+        c.Toggles["mcp"] = true;
+        c.CustomApps.Add("b");
+        Assert.False(s.Toggles["mcp"]);
+        Assert.Equal(new[] { "a" }, s.CustomApps);
+        Assert.Equal(new[] { "a", "b" }, c.CustomApps);
+    }
+
+    [Fact] // M15: the game loading during the measurement can hide what was freed
+    public void Freed_is_the_larger_of_measured_and_killed()
+    {
+        Assert.Equal(30, new SessionState { AvailBefore = 100, AvailAfter = 50, KilledBytes = 30 }.Freed);
+        Assert.Equal(80, new SessionState { AvailBefore = 100, AvailAfter = 180, KilledBytes = 30 }.Freed);
+    }
+
     [Fact]
     public void Save_leaves_no_temp_file()
     {

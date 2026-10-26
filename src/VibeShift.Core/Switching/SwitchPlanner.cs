@@ -4,8 +4,11 @@ using VibeShift.Core.State;
 
 namespace VibeShift.Core.Switching;
 
-/// <summary>A catalog row that is running: its root processes, everything under them, and their RAM.</summary>
-public sealed record Detected(CatalogEntry Entry, IReadOnlyList<ProcInfo> Roots, IReadOnlyList<ProcInfo> Members, long Bytes);
+/// <summary>
+/// A catalog row that is running: its root processes, everything under them, their RAM, and the
+/// processes that matched the row itself (Members can include other apps' processes it started).
+/// </summary>
+public sealed record Detected(CatalogEntry Entry, IReadOnlyList<ProcInfo> Roots, IReadOnlyList<ProcInfo> Members, long Bytes, IReadOnlyList<ProcInfo> Matched);
 
 public sealed record CloseTarget(CatalogEntry Entry, IReadOnlyList<ProcInfo> Roots, IReadOnlyList<int> KillPids, IReadOnlyList<ProcInfo> ReopenRoots);
 
@@ -14,13 +17,15 @@ public sealed record GamingPlan(
     bool ShutdownWsl,
     bool PoliteClose,
     IReadOnlyList<string> StopServices,
-    long EstimatedBytes);
+    long EstimatedBytes)
+{
+    /// <summary>Every row this switch closes, including Docker / WSL when only WSL is shut down.</summary>
+    public IReadOnlyList<string> ClosedEntryIds { get; init; } = [];
+}
 
 /// <summary>Every switching decision, as pure functions over a snapshot. The Switcher only carries them out.</summary>
 public static class SwitchPlanner
 {
-    private const string WslVm = "vmmemWSL";
-
     public static IReadOnlyList<Detected> Detect(
         IReadOnlyList<ProcInfo> all,
         IReadOnlyList<CatalogEntry> entries,
@@ -34,7 +39,7 @@ public static class SwitchPlanner
             var e = AppCatalog.Match(p, entries, imagePath, commandLine);
             if (e is not null && !blocked(p)) matched[e.Id].Add(p);
         }
-        var vm = all.Where(IsWslVm).ToList();
+        var vm = WslVm(all);
 
         var result = new List<Detected>();
         foreach (var e in entries)
@@ -48,7 +53,7 @@ public static class SwitchPlanner
                 .Concat(dockerWsl ? vm : [])
                 .DistinctBy(p => p.Pid)
                 .ToList();
-            result.Add(new Detected(e, roots, members, members.Sum(m => m.PrivateBytes)));
+            result.Add(new Detected(e, roots, members, members.Sum(m => m.PrivateBytes), procs));
         }
         return result;
     }
@@ -75,29 +80,43 @@ public static class SwitchPlanner
             // VibeShift runs inside this app (e.g. started from its terminal): closing part of it would leave
             // a broken app we couldn't reopen, so leave the whole app alone.
             if (d.Roots.Any(r => selfChain.Contains(r.Pid))) continue;
+            // Parents first: a supervisor that's already dead can't respawn the children killed after it.
             var kill = d.Roots
-                .SelectMany(r => ProcessTree.Descendants(all, r.Pid, node => offRoots.Contains(node.Pid) || spare(node, r)))
+                .SelectMany(r => ProcessTree.Descendants(all, r.Pid, node => offRoots.Contains(node.Pid) || spare(node, r)).Reverse())
                 .Select(p => p.Pid)
                 .Distinct()
                 .ToList();
-            var reopen = d.Entry.Reopen
-                ? d.Roots.Where(r => r.Name.Equals(d.Entry.ProcessNames[0], StringComparison.OrdinalIgnoreCase)).ToList()
+            // Reopen the launcher exe, even when it runs under one of its own helpers (Docker Desktop under its backend).
+            string? launcher = d.Entry.ProcessNames.FirstOrDefault();
+            var reopen = d.Entry.Reopen && launcher is not null
+                ? ProcessTree.Roots(all, d.Matched.Where(m => m.Name.Equals(launcher, StringComparison.OrdinalIgnoreCase)).ToList())
                 : [];
             close.Add(new CloseTarget(d.Entry, d.Roots, kill, reopen));
         }
 
-        bool shutdownWsl = detected.Any(d => d.Entry.Kind == EntryKind.DockerWsl && s.IsOn(d.Entry)) && all.Any(IsWslVm);
-        var closing = close.Select(t => t.Entry.Id).ToHashSet();
-        long estimated = detected
-            .Where(d => closing.Contains(d.Entry.Id) || (d.Entry.Kind == EntryKind.DockerWsl && shutdownWsl))
-            .Sum(d => d.Bytes);
+        var vm = WslVm(all);
+        var dockerWsl = detected.FirstOrDefault(d => d.Entry.Kind == EntryKind.DockerWsl);
+        bool shutdownWsl = dockerWsl is not null && s.IsOn(dockerWsl.Entry) && vm.Count > 0;
+
+        // Each process frees its RAM once, however many rows it belongs to.
+        var byPid = new Dictionary<int, ProcInfo>();
+        foreach (var p in all) byPid.TryAdd(p.Pid, p);
+        var killed = close.SelectMany(t => t.KillPids).ToHashSet();
+        long estimated = killed.Sum(pid => byPid[pid].PrivateBytes)
+            + (shutdownWsl ? vm.Where(v => !killed.Contains(v.Pid)).Sum(v => v.PrivateBytes) : 0);
+
+        var closedIds = close.Select(t => t.Entry.Id).ToList();
+        if (shutdownWsl && !closedIds.Contains(dockerWsl!.Entry.Id)) closedIds.Add(dockerWsl.Entry.Id);
 
         return new GamingPlan(
             close,
             shutdownWsl,
             PoliteClose: !automatic,
             StopServices: s.ExtraBoost && !automatic ? s.BoostServices.ToList() : [],
-            estimated);
+            estimated)
+        {
+            ClosedEntryIds = closedIds,
+        };
     }
 
     /// <summary>What to reopen, in closing order, minus apps that are already running again.</summary>
@@ -118,5 +137,15 @@ public static class SwitchPlanner
         return rootDir is null || !processPath.StartsWith(rootDir.TrimEnd('\\') + @"\", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsWslVm(ProcInfo p) => p.Name.Equals(WslVm, StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// The WSL VM process: "vmmemWSL", or plain "vmmem" on older Windows 10 WSL. Hyper-V VMs are also
+    /// "vmmem", so that name only counts while WSL itself is running (wslhost present).
+    /// </summary>
+    private static List<ProcInfo> WslVm(IReadOnlyList<ProcInfo> all)
+    {
+        bool wslRunning = all.Any(p => p.Name.Equals("wslhost", StringComparison.OrdinalIgnoreCase));
+        return all.Where(p => p.Name.Equals("vmmemWSL", StringComparison.OrdinalIgnoreCase)
+                              || (wslRunning && p.Name.Equals("vmmem", StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
 }

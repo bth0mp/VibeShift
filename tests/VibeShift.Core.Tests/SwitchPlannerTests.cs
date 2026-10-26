@@ -58,7 +58,7 @@ public class SwitchPlannerTests
     {
         var all = new[] { P(1, 0, "Cursor"), P(2, 1, "conhost"), P(3, 2, "node"), P(4, 1, "deadlock"), P(5, 1, "Cursor") };
         var kill = Plan(all, spare: (node, _) => node.Pid is 2 or 4).Close.Single().KillPids;
-        Assert.Equal(new[] { 5, 1 }, kill);
+        Assert.Equal(new[] { 1, 5 }, kill);
     }
 
     [Fact] // review I1: an app the user switched off survives even when a switched-on app started it
@@ -78,11 +78,42 @@ public class SwitchPlannerTests
     public void Separate_windowed_app(string? path, bool hasWindow, bool expected) =>
         Assert.Equal(expected, SwitchPlanner.IsSeparateApp(path, Desk, hasWindow));
 
-    [Fact]
-    public void Kill_list_is_children_first()
+    [Fact] // M8: a supervisor killed first can't respawn the children killed after it
+    public void Kill_list_is_parents_first()
     {
         var all = new[] { P(1, 0, "Cursor"), P(2, 1, "Cursor"), P(3, 2, "Cursor") };
-        Assert.Equal(new[] { 3, 2, 1 }, Plan(all).Close.Single().KillPids);
+        Assert.Equal(new[] { 1, 2, 3 }, Plan(all).Close.Single().KillPids);
+    }
+
+    [Fact] // M7: MCP servers under Claude belong to both rows but free their RAM once
+    public void Estimate_counts_each_process_once_even_when_rows_nest()
+    {
+        var all = new[] { P(1, 0, "claude", bytes: 100), P(2, 1, "node", bytes: 10) };
+        paths[1] = Desk;
+        cmds[2] = "node mcp-server-x";
+        Assert.Equal(110, Plan(all).EstimatedBytes);
+    }
+
+    [Fact] // M9: Docker Desktop can sit under its backend; it's still the one to reopen
+    public void Launcher_below_a_helper_is_still_reopened()
+    {
+        var all = new[] { P(1, 0, "com.docker.backend"), P(2, 1, "Docker Desktop") };
+        settings.Toggles["docker-wsl"] = true;
+        Assert.Equal(new[] { 2 }, Plan(all).Close.Single().ReopenRoots.Select(r => r.Pid));
+    }
+
+    [Fact] // M9: the Microsoft 365 Copilot app is its own row, reopened like the rest
+    public void Microsoft_365_Copilot_is_reopened() =>
+        Assert.Equal(new[] { 1 }, Plan(new[] { P(1, 0, "M365Copilot") }).Close.Single().ReopenRoots.Select(r => r.Pid));
+
+    [Fact] // M10: older Windows 10 WSL runs its VM as "vmmem"
+    public void Older_wsl_vm_counts_only_while_wsl_is_running()
+    {
+        settings.Toggles["docker-wsl"] = true;
+        var plan = Plan(new[] { P(1, 0, "vmmem", bytes: 1000), P(2, 0, "wslhost") });
+        Assert.True(plan.ShutdownWsl);
+        Assert.Equal(1000, plan.EstimatedBytes);
+        Assert.False(Plan(new[] { P(1, 0, "vmmem", bytes: 1000) }).ShutdownWsl); // a Hyper-V VM, not WSL
     }
 
     [Fact]
@@ -124,6 +155,7 @@ public class SwitchPlannerTests
         Assert.Empty(plan.Close);
         Assert.True(plan.ShutdownWsl);
         Assert.Equal(1000, plan.EstimatedBytes);
+        Assert.Equal(new[] { "docker-wsl" }, plan.ClosedEntryIds); // M10: the row shows it was shut down
     }
 
     [Fact]
@@ -153,6 +185,28 @@ public class SwitchPlannerTests
     [Fact]
     public void Blocked_processes_are_never_detected() =>
         Assert.DoesNotContain(Detect(new[] { P(5, 0, "Cursor") }, blocked: p => p.Pid == 5), d => d.Entry.Id == "cursor");
+
+    [Fact] // M12d: case-variant custom paths are one app, not a crash
+    public void Custom_paths_differing_only_in_case_are_one_entry()
+    {
+        var s = new Settings { CustomApps = { @"C:\A\x.exe", @"c:\a\X.EXE" } };
+        Assert.Single(Switcher.Entries(s), e => e.Kind == EntryKind.Custom);
+    }
+
+    [Theory] // M9: Squirrel-installed apps update into a new app-x.y.z folder; reopen the stable stub
+    [InlineData(@"C:\U\AppData\Local\AnthropicClaude\app-1.2.3\claude.exe", true, @"C:\U\AppData\Local\AnthropicClaude\claude.exe")]
+    [InlineData(@"C:\U\AppData\Local\AnthropicClaude\app-1.2.3\claude.exe", false, @"C:\U\AppData\Local\AnthropicClaude\app-1.2.3\claude.exe")]
+    [InlineData(@"C:\Apps\cursor\Cursor.exe", true, @"C:\Apps\cursor\Cursor.exe")]
+    public void Versioned_install_reopens_through_its_stub(string path, bool stubExists, string expected) =>
+        Assert.Equal(expected, ReopenTarget.PreferStub(path, _ => stubExists));
+
+    [Fact] // M14: an elevated VibeShift must still reopen apps unelevated, via the shell
+    public void Elevated_reopen_goes_through_the_shell()
+    {
+        var b = ReopenTarget.ToStartInfo(new("cursor", "Cursor", @"C:\Apps\cursor\Cursor.exe", null), elevated: true);
+        Assert.Equal("explorer.exe", b.FileName);
+        Assert.Equal("\"C:\\Apps\\cursor\\Cursor.exe\"", b.Arguments);
+    }
 
     [Fact]
     public void Reopen_start_info()
