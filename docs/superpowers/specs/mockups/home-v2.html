@@ -1,0 +1,103 @@
+<style>
+  .vs { --bg:#0f0d15; --surf:#1a1724; --surf2:#221e2f; --line:#2c2740; --tx:#ede9fe; --mut:#9c94b3; --acc:#8b5cf6; --acc2:#c084fc; --tile:#c084fc;
+        font-family:"Segoe UI Variable","Segoe UI",system-ui,sans-serif; color:var(--tx); background:var(--bg);
+        border-radius:10px; border:1px solid var(--line); overflow:hidden; width:100%; max-width:440px; margin:0 auto;
+        box-shadow:0 12px 40px rgba(76,29,149,.35); text-align:left; }
+  .vs.light { --bg:#f7f5fc; --surf:#ffffff; --surf2:#f1edfb; --line:#e4ddf5; --tx:#1e1631; --mut:#6b6385; --acc:#7c3aed; --acc2:#7c3aed;
+              box-shadow:0 12px 40px rgba(124,58,237,.18); }
+  .vs .bar { display:flex; align-items:center; gap:8px; padding:9px 12px; font-size:12px; color:var(--mut); }
+  .vs .bar b { color:var(--tx); font-weight:600; }
+  .vs .bar .win { margin-left:auto; letter-spacing:12px; }
+  .vs .logo { width:16px; height:16px; border-radius:5px; background:linear-gradient(135deg,#7c3aed,#c084fc); }
+  .vs .mut { color:var(--mut); }
+  .vs .rail { width:46px; padding:10px 0; display:flex; flex-direction:column; align-items:center; gap:16px; font-size:16px; border-right:1px solid var(--line); color:var(--mut); }
+  .vs .rail .on { color:var(--acc2); }
+  .vs .main { flex:1; padding:12px 14px 14px; }
+  .vs .mode { display:flex; align-items:center; gap:7px; font-size:15px; font-weight:600; }
+  .vs .dot { width:8px; height:8px; border-radius:50%; background:#34d399; box-shadow:0 0 8px #34d399; }
+  .vs .dot.game { background:#a855f7; box-shadow:0 0 8px #a855f7; }
+  .vs .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin:12px 0; }
+  .vs .tile { background:var(--surf); border:1px solid var(--line); border-radius:9px; padding:8px 9px; }
+  .vs .tile .k { font-size:9px; letter-spacing:.6px; color:var(--mut); }
+  .vs .tile .v { font-size:17px; font-weight:600; margin-top:2px; }
+  .vs .lbl { font-size:9px; letter-spacing:.6px; color:var(--mut); margin-bottom:5px; display:flex; }
+  .vs .lbl a { margin-left:auto; color:var(--acc2); }
+  .vs .list { background:var(--surf); border:1px solid var(--line); border-radius:9px; font-size:12px; }
+  .vs .row { display:flex; align-items:center; gap:8px; padding:7px 9px; border-bottom:1px solid var(--line); }
+  .vs .row:last-child { border-bottom:0; }
+  .vs .ico { width:18px; height:18px; border-radius:5px; flex-shrink:0; }
+  .vs .tog { width:30px; height:17px; border-radius:99px; background:var(--acc); position:relative; flex-shrink:0; }
+  .vs .tog:after { content:""; position:absolute; right:2px; top:2px; width:13px; height:13px; border-radius:50%; background:#fff; }
+  .vs .tog.off { background:#3a3550; } .vs.light .tog.off { background:#d6cfe8; } .vs .tog.off:after { right:auto; left:2px; }
+  .vs .btn { margin-top:12px; text-align:center; border-radius:10px; padding:11px; font-weight:600; font-size:13px; color:#fff;
+             background:linear-gradient(135deg,#7c3aed,#a855f7); box-shadow:0 6px 18px rgba(139,92,246,.4); }
+  .vs .btn.ghost { background:transparent; color:var(--acc2); border:1.5px solid var(--acc); box-shadow:none; }
+  .vs .tag { font-size:10px; padding:2px 7px; border-radius:99px; background:var(--surf2); color:var(--mut); }
+  .vs .toast { display:flex; align-items:center; gap:8px; background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(192,132,252,.12));
+               border:1px solid rgba(124,58,237,.35); border-radius:9px; padding:8px 10px; font-size:12px; margin-top:10px; }
+</style>
+
+<h2>B, refined: dark mode while coding, light mode while gaming</h2>
+<p class="subtitle">Same screen in both themes and both states. Theme follows Windows by default, or you can pick one in Settings.</p>
+
+<div class="split">
+
+  <div class="mockup">
+    <div class="mockup-header">Dark &middot; vibe coding mode</div>
+    <div class="mockup-body" style="padding:18px;background:#e9e5f5">
+      <div class="vs">
+        <div class="bar"><span class="logo"></span><b>VibeShift</b><span class="win">&#8211; &#9633; &#10005;</span></div>
+        <div style="display:flex">
+          <div class="rail"><span class="on">&#8962;</span><span>&#9638;</span><span>&#9881;</span></div>
+          <div class="main">
+            <div class="mode"><span class="dot"></span>Vibe coding mode</div>
+            <div class="tiles">
+              <div class="tile"><div class="k">FREE RAM</div><div class="v">8.2 GB</div></div>
+              <div class="tile"><div class="k">AI APPS</div><div class="v">4 open</div></div>
+              <div class="tile"><div class="k">CAN FREE</div><div class="v" style="color:var(--tile)">3.2 GB</div></div>
+            </div>
+            <div class="lbl">CLOSE WHEN GAMING<a>+ Add app</a></div>
+            <div class="list">
+              <div class="row"><span class="ico" style="background:#d97757"></span>Claude<span class="mut" style="margin-left:auto">1.1 GB</span><span class="tog"></span></div>
+              <div class="row"><span class="ico" style="background:#10a37f"></span>ChatGPT<span class="mut" style="margin-left:auto">640 MB</span><span class="tog"></span></div>
+              <div class="row"><span class="ico" style="background:#3b82f6"></span>Cursor<span class="mut" style="margin-left:auto">900 MB</span><span class="tog"></span></div>
+              <div class="row"><span class="ico" style="background:#a78bfa"></span>MCP servers<span class="mut" style="margin-left:auto">550 MB</span><span class="tog"></span></div>
+              <div class="row"><span class="ico" style="background:#2496ed"></span>Docker / WSL<span class="mut" style="margin-left:auto">1.9 GB</span><span class="tog off"></span></div>
+            </div>
+            <div class="btn">Start gaming</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Light &middot; gaming mode on</div>
+    <div class="mockup-body" style="padding:18px;background:#e9e5f5">
+      <div class="vs light">
+        <div class="bar"><span class="logo"></span><b>VibeShift</b><span class="win">&#8211; &#9633; &#10005;</span></div>
+        <div style="display:flex">
+          <div class="rail"><span class="on">&#8962;</span><span>&#9638;</span><span>&#9881;</span></div>
+          <div class="main">
+            <div class="mode"><span class="dot game"></span>Gaming mode</div>
+            <div class="tiles">
+              <div class="tile"><div class="k">FREE RAM</div><div class="v">11.4 GB</div></div>
+              <div class="tile"><div class="k">AI APPS</div><div class="v">0 open</div></div>
+              <div class="tile"><div class="k">FREED</div><div class="v" style="color:var(--acc)">3.2 GB</div></div>
+            </div>
+            <div class="lbl">CLOSED FOR GAMING</div>
+            <div class="list">
+              <div class="row"><span class="ico" style="background:#d97757;opacity:.45"></span>Claude<span class="tag" style="margin-left:auto">reopens after</span></div>
+              <div class="row"><span class="ico" style="background:#10a37f;opacity:.45"></span>ChatGPT<span class="tag" style="margin-left:auto">reopens after</span></div>
+              <div class="row"><span class="ico" style="background:#3b82f6;opacity:.45"></span>Cursor<span class="tag" style="margin-left:auto">reopens after</span></div>
+              <div class="row"><span class="ico" style="background:#a78bfa;opacity:.45"></span>MCP servers<span class="tag" style="margin-left:auto">come back with Claude</span></div>
+              <div class="row"><span class="ico" style="background:#2496ed"></span>Docker / WSL<span class="mut" style="margin-left:auto">left running</span></div>
+            </div>
+            <div class="btn ghost">Back to vibe coding</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
