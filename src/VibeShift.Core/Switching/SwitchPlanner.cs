@@ -21,7 +21,13 @@ public sealed record GamingPlan(
 {
     /// <summary>Every row this switch closes, including Docker / WSL when only WSL is shut down.</summary>
     public IReadOnlyList<string> ClosedEntryIds { get; init; } = [];
+
+    /// <summary>Roots to ask to close before force-closing: none on automatic switches, and never browsers.</summary>
+    public IReadOnlyList<ProcInfo> PoliteCloseRoots { get; init; } = [];
 }
+
+/// <summary>An app not in any row that's using a lot of RAM: one exe, all its processes added up.</summary>
+public sealed record Suggestion(string Path, long Bytes, int Processes);
 
 /// <summary>Every switching decision, as pure functions over a snapshot. The Switcher only carries them out.</summary>
 public static class SwitchPlanner
@@ -90,9 +96,9 @@ public static class SwitchPlanner
                 .Distinct()
                 .ToList();
             // Reopen the launcher exe, even when it runs under one of its own helpers (Docker Desktop under its backend).
-            string? launcher = d.Entry.ProcessNames.FirstOrDefault();
-            var reopen = d.Entry.Reopen && launcher is not null
-                ? ProcessTree.Roots(all, d.Matched.Where(m => m.Name.Equals(launcher, StringComparison.OrdinalIgnoreCase)).ToList())
+            var launchers = d.Entry.Launchers ?? d.Entry.ProcessNames.Take(1).ToArray();
+            var reopen = d.Entry.Reopen
+                ? ProcessTree.Roots(all, d.Matched.Where(m => launchers.Contains(m.Name, StringComparer.OrdinalIgnoreCase)).ToList())
                 : [];
             close.Add(new CloseTarget(d.Entry, d.Roots, kill, reopen));
         }
@@ -119,6 +125,7 @@ public static class SwitchPlanner
             estimated)
         {
             ClosedEntryIds = closedIds,
+            PoliteCloseRoots = automatic ? [] : close.Where(t => t.Entry.Graceful).SelectMany(t => t.Roots).ToList(),
         };
     }
 
@@ -130,6 +137,35 @@ public static class SwitchPlanner
         plan.Close.SelectMany(t => t.KillPids).Distinct()
             .OrderBy(pid => ProcessTree.Ancestors(all, pid).Count)
             .ToList();
+
+    /// <summary>
+    /// "What's using RAM": the biggest apps that aren't already a row, grouped by exe so a browser's 20
+    /// processes count as one. <paramref name="excluded"/> (process, exe path) drops things that must never be
+    /// offered: Windows itself, VibeShift, games and their launchers, other users' processes.
+    /// </summary>
+    public static IReadOnlyList<Suggestion> SuggestApps(
+        IReadOnlyList<ProcInfo> all,
+        IReadOnlyList<Detected> detected,
+        Func<int, string?> imagePath,
+        Func<ProcInfo, string, bool> excluded,
+        int max = 6,
+        long minBytes = 100L << 20)
+    {
+        var inRows = detected.SelectMany(d => d.Members).Select(p => p.Pid).ToHashSet();
+        var byExe = new Dictionary<string, (string Path, long Bytes, int Count)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in all)
+        {
+            if (inRows.Contains(p.Pid) || imagePath(p.Pid) is not { } path || excluded(p, path)) continue;
+            var (_, bytes, count) = byExe.GetValueOrDefault(path, (path, 0L, 0));
+            byExe[path] = (path, bytes + p.PrivateBytes, count + 1);
+        }
+        return byExe.Values
+            .Where(v => v.Bytes >= minBytes)
+            .OrderByDescending(v => v.Bytes)
+            .Take(max)
+            .Select(v => new Suggestion(v.Path, v.Bytes, v.Count))
+            .ToList();
+    }
 
     /// <summary>What to reopen, in closing order, minus apps that are already running again.</summary>
     public static IReadOnlyList<ClosedApp> PlanReopen(SessionState session, IReadOnlyList<Detected> runningNow)

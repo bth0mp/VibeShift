@@ -72,6 +72,20 @@ public class CatalogTests
     public void Npm_installed_agents_are_cli_agents(string cmd) =>
         Assert.Equal("cli-agents", AppCatalog.Match(new ProcInfo(42, 1, "node", 10, 1), AppCatalog.BuiltIn, _ => null, _ => cmd)?.Id);
 
+    [Theory] // 1.1: browsers and desktop extras rows
+    [InlineData("firefox", "browsers")]
+    [InlineData("chrome", "browsers")]
+    [InlineData("msedge", "browsers")]
+    [InlineData("wallpaper64", "wallpaper-engine")]
+    [InlineData("PowerToys", "powertoys")]
+    [InlineData("Microsoft.CmdPal.UI", "powertoys")]
+    [InlineData("Widgets", "widgets")]
+    public void Extra_rows_match(string name, string id) => Assert.Equal(id, Match(name, @"C:\x\" + name + ".exe")?.Id);
+
+    [Fact] // 1.1: every new row is opt-in
+    public void Extra_rows_are_off_by_default() =>
+        Assert.All(AppCatalog.BuiltIn.Where(e => e.Id is "browsers" or "wallpaper-engine" or "powertoys" or "widgets"), e => Assert.False(e.DefaultOn));
+
     [Fact] // 1.0.1 review #5: updating an agent with npm isn't running the agent
     public void Installing_an_agent_with_npm_is_not_the_agent() =>
         Assert.Null(AppCatalog.Match(new ProcInfo(42, 1, "node", 10, 1), AppCatalog.BuiltIn, _ => null,

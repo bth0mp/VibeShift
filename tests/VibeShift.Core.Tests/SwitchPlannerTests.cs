@@ -213,6 +213,56 @@ public class SwitchPlannerTests
     public void Blocked_processes_are_never_detected() =>
         Assert.DoesNotContain(Detect(new[] { P(5, 0, "Cursor") }, blocked: p => p.Pid == 5), d => d.Entry.Id == "cursor");
 
+    [Fact] // 1.1: a row covering several browsers reopens whichever one was running
+    public void Browser_row_reopens_whichever_browser_was_running()
+    {
+        settings.Toggles["browsers"] = true;
+        Assert.Equal(new[] { 1 }, Plan(new[] { P(1, 0, "chrome"), P(2, 1, "chrome") }).Close.Single().ReopenRoots.Select(r => r.Pid));
+    }
+
+    [Fact] // 1.1: Wallpaper Engine runs as 32- or 64-bit; either one is reopened
+    public void Wallpaper_engine_64_bit_is_reopened()
+    {
+        settings.Toggles["wallpaper-engine"] = true;
+        Assert.Equal(new[] { 1 }, Plan(new[] { P(1, 0, "wallpaper64") }).Close.Single().ReopenRoots.Select(r => r.Pid));
+    }
+
+    [Fact] // 1.1: Windows restarts Widgets on its own, so it's closed but not reopened
+    public void Widgets_are_not_reopened()
+    {
+        settings.Toggles["widgets"] = true;
+        Assert.Empty(Plan(new[] { P(1, 0, "Widgets") }).Close.Single().ReopenRoots);
+    }
+
+    [Fact] // 1.1: a browser told to close politely forgets its tabs; one that's ended restores them on reopen
+    public void Browsers_are_not_asked_to_close_politely()
+    {
+        settings.Toggles["browsers"] = true;
+        var plan = Plan(new[] { P(1, 0, "firefox"), P(2, 0, "Cursor") });
+        Assert.Equal(new[] { 2 }, plan.PoliteCloseRoots.Select(r => r.Pid));
+        Assert.Empty(Plan(new[] { P(1, 0, "firefox"), P(2, 0, "Cursor") }, automatic: true).PoliteCloseRoots);
+    }
+
+    [Fact] // 1.1 "What's using RAM": other apps grouped by exe, biggest first
+    public void Suggestions_group_other_apps_by_exe()
+    {
+        var all = new[]
+        {
+            P(1, 0, "Spotify", bytes: 3_000), P(2, 1, "Spotify", bytes: 2_000), // one app, two processes
+            P(3, 0, "Cursor", bytes: 9_000),                                 // already a row
+            P(4, 0, "blender", bytes: 4_000),
+            P(5, 0, "tiny", bytes: 50),                                      // below the threshold
+            P(6, 0, "secret", bytes: 8_000),                                 // excluded by the caller
+        };
+        paths[1] = paths[2] = @"C:\Spotify\Spotify.exe";
+        paths[3] = @"C:\Cursor\Cursor.exe";
+        paths[4] = @"C:\Blender\blender.exe";
+        paths[5] = @"C:\Tiny\tiny.exe";
+        paths[6] = @"C:\Secret\secret.exe";
+        var s = SwitchPlanner.SuggestApps(all, Detect(all), pid => paths.GetValueOrDefault(pid), (p, _) => p.Pid == 6, max: 5, minBytes: 1_000);
+        Assert.Equal(new[] { (@"C:\Spotify\Spotify.exe", 5_000L), (@"C:\Blender\blender.exe", 4_000L) }, s.Select(x => (x.Path, x.Bytes)));
+    }
+
     [Fact] // M12d: case-variant custom paths are one app, not a crash
     public void Custom_paths_differing_only_in_case_are_one_entry()
     {

@@ -5,7 +5,11 @@ namespace VibeShift.Core.Catalog;
 
 public enum EntryKind { App, Mcp, DockerWsl, CliAgents, Custom }
 
-/// <summary>A row VibeShift can close. ProcessNames[0] is the launcher exe, the only one recorded for reopening.</summary>
+/// <summary>
+/// A row VibeShift can close. The exes recorded for reopening are <see cref="Launchers"/>, or ProcessNames[0]
+/// when that's null. <see cref="Graceful"/> = false skips the polite close request (browsers restore their tabs
+/// after being ended, but forget them when politely closed with default settings).
+/// </summary>
 public sealed record CatalogEntry(
     string Id,
     string Name,
@@ -15,11 +19,14 @@ public sealed record CatalogEntry(
     bool Reopen,
     string Color,
     string[]? PathContains = null,
-    string[]? PathExcludes = null);
+    string[]? PathExcludes = null,
+    bool Graceful = true,
+    string[]? Launchers = null);
 
 public static class AppCatalog
 {
     private static readonly string[] ClaudeDesktopPaths = [@"\WindowsApps\Claude_", @"\AnthropicClaude\"];
+    private static readonly string[] Browsers = ["firefox", "chrome", "msedge", "brave", "opera", "vivaldi"];
 
     /// <summary>Matched in this order; the first match wins.</summary>
     public static IReadOnlyList<CatalogEntry> BuiltIn { get; } =
@@ -37,6 +44,13 @@ public static class AppCatalog
         new("docker-wsl", "Docker / WSL", EntryKind.DockerWsl, ["Docker Desktop", "com.docker.backend"], false, true, "#2496ed"),
         new("cli-agents", "Command-line AI agents", EntryKind.CliAgents, ["claude", "codex", "gemini"], false, false, "#f59e0b",
             PathExcludes: ClaudeDesktopPaths),
+        // Everyday extras, all opt-in.
+        new("browsers", "Web browsers", EntryKind.App, Browsers, false, true, "#f97316", Graceful: false, Launchers: Browsers),
+        new("wallpaper-engine", "Wallpaper Engine", EntryKind.App, ["wallpaper32", "wallpaper64"], false, true, "#06b6d4",
+            Launchers: ["wallpaper32", "wallpaper64"]),
+        new("powertoys", "PowerToys", EntryKind.App, ["PowerToys", "Microsoft.CmdPal.UI"], false, true, "#64748b"),
+        // Windows starts Widgets again by itself when it's needed.
+        new("widgets", "Windows Widgets", EntryKind.App, ["Widgets", "WidgetService"], false, false, "#0078d4"),
     ];
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CatalogEntry> CustomCache =
