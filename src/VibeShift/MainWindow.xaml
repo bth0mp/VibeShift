@@ -109,11 +109,24 @@
             <StackPanel Margin="18,16,18,18">
                 <TextBlock Text="Apps" FontSize="18" FontWeight="SemiBold" />
                 <TextBlock Style="{StaticResource Hint}" FontSize="12" Margin="0,6,0,16"
-                           Text="Switch on what Gaming mode should close. An app shows up here once VibeShift has seen it running, or when you add it yourself." />
+                           Text="Choose what closes when you start gaming, and what opens when you're back to vibe coding. An app shows up here once VibeShift has seen it running, or when you add it yourself." />
                 <DockPanel Margin="0,0,0,7">
                     <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add app" Click="AddApp_Click" />
                     <TextBlock Style="{StaticResource Label}" Text="YOUR APPS" />
                 </DockPanel>
+                <!-- column headings over the two switches in each row -->
+                <Grid Margin="12,0,12,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition />
+                        <ColumnDefinition Width="46" />
+                        <ColumnDefinition Width="46" />
+                        <ColumnDefinition Width="22" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="1" Style="{StaticResource Label}" FontSize="9" Text="CLOSE" HorizontalAlignment="Center"
+                               ToolTip="Close when you start gaming" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource Label}" FontSize="9" Text="OPEN" HorizontalAlignment="Center"
+                               ToolTip="Open when you switch back to vibe coding" />
+                </Grid>
                 <TextBlock Text="{Binding AppsMessage}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" Margin="0,0,0,8"
                            Visibility="{Binding HasAppsMessage, Converter={StaticResource Visible}}" />
                 <Border Style="{StaticResource Card}">
@@ -164,7 +177,7 @@
                     </DockPanel>
                 </Border>
 
-                <TextBlock Style="{StaticResource Label}" Text="AUTO MODE" Margin="0,18,0,7" />
+                <TextBlock Style="{StaticResource Label}" Text="AUTOMATIC SWITCHING" Margin="0,18,0,7" />
                 <Border Style="{StaticResource Tile}">
                     <StackPanel>
                         <DockPanel>
@@ -174,6 +187,16 @@
                                 <TextBlock Text="Auto mode" />
                                 <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
                                            Text="Switch to gaming when a game starts, and back 10 seconds after it closes." />
+                            </StackPanel>
+                        </DockPanel>
+                        <Rectangle Height="1" Fill="{DynamicResource BorderBrush}" Margin="0,11" />
+                        <DockPanel>
+                            <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding ReturnWhenGameCloses}" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Switch back when my game closes" />
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="Switch back when my game closes" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
+                                           Text="Even if you started gaming yourself: about 10 seconds after your game closes, VibeShift switches back and opens your apps." />
                             </StackPanel>
                         </DockPanel>
                         <Rectangle Height="1" Fill="{DynamicResource BorderBrush}" Margin="0,11" />
@@ -293,23 +316,28 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="46" />
+                        <ColumnDefinition Width="46" />
+                        <ColumnDefinition Width="22" />
                     </Grid.ColumnDefinitions>
                     <Border Width="22" Height="22" CornerRadius="6" Background="{Binding BadgeBrush}">
                         <TextBlock Text="{Binding BadgeLetter}" Foreground="White" FontSize="11" FontWeight="Bold"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Column="2" Text="{Binding RamText}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,10,0"
+                    <TextBlock Grid.Column="2" Text="{Binding RamText}" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,6,0"
                                Visibility="{Binding ShowRam, Converter={StaticResource Visible}}" />
-                    <Border Grid.Column="2" Style="{StaticResource Pill}" VerticalAlignment="Center" Margin="0,0,10,0"
+                    <Border Grid.Column="2" Style="{StaticResource Pill}" VerticalAlignment="Center" Margin="0,0,6,0"
                             Visibility="{Binding HasTag, Converter={StaticResource Visible}}">
                         <TextBlock Text="{Binding Tag}" FontSize="10.5" Foreground="{DynamicResource MutedBrush}" />
                     </Border>
-                    <CheckBox Grid.Column="3" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsOn}" VerticalAlignment="Center"
-                              AutomationProperties.Name="{Binding Name, StringFormat='Close {0} when gaming'}" />
-                    <Button Grid.Column="4" Style="{StaticResource IconButton}" Content="&#xE711;" Margin="6,0,-6,0" Click="RemoveApp_Click"
+                    <CheckBox Grid.Column="3" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsOn}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                              ToolTip="Close when you start gaming" AutomationProperties.Name="{Binding Name, StringFormat='Close {0} when gaming'}" />
+                    <CheckBox Grid.Column="4" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsVibe}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                              ToolTip="Open every time you switch back to vibe coding, even if it wasn't open before"
+                              AutomationProperties.Name="{Binding Name, StringFormat='Open {0} when vibing'}"
+                              Visibility="{Binding CanVibe, Converter={StaticResource Visible}}" />
+                    <Button Grid.Column="5" Style="{StaticResource IconButton}" Content="&#xE711;" Width="22" Click="RemoveApp_Click"
                             ToolTip="Remove" AutomationProperties.Name="Remove app"
                             Visibility="{Binding IsCustom, Converter={StaticResource Visible}}" />
                 </Grid>

@@ -113,6 +113,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { Settings.ExtraBoost = value; SaveSettings(); Raise(); }
     }
 
+    public bool ReturnWhenGameCloses
+    {
+        get => Settings.ReturnWhenGameCloses;
+        set { Settings.ReturnWhenGameCloses = value; SaveSettings(); Raise(); }
+    }
+
+    /// <summary>A gaming session is in progress (session.json exists).</summary>
+    public bool HasSession => session is not null;
+
+    /// <summary>What the last switch back opened, for the tray's welcome-back notification.</summary>
+    public string LastReturnMessage { get; private set; } = "";
+
     public int ForceCloseSeconds
     {
         get => Settings.ForceCloseSeconds;
@@ -262,10 +274,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         || string.Equals(path, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
                     .Select(s => new SuggestionRow(s.Path, AppCatalog.Custom(s.Path).Name, Format.Bytes(s.Bytes)))
                     .ToList();
-                return (det, ProcessQuery.AvailableRamBytes(), est, offers);
+                // How to start each running app again (for vibe apps). Background-only browsers have no window to restore.
+                var seen = new Dictionary<string, ClosedApp>();
+                foreach (var d in det)
+                {
+                    var root = SwitchPlanner.LauncherRoots(all, d).FirstOrDefault();
+                    if (root is null || ProcessQuery.GetCommandLine(root.Pid)?.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase) == true) continue;
+                    var exe = ProcessQuery.GetImagePath(root.Pid) is { } path ? ReopenTarget.PreferStub(path, System.IO.File.Exists) : null;
+                    var target = new ClosedApp(d.Entry.Id, d.Entry.Name, exe, ProcessQuery.GetAumid(root.Pid));
+                    if ((target.ExePath ?? target.Aumid) is not null) seen[d.Entry.Id] = target;
+                }
+                return (det, ProcessQuery.AvailableRamBytes(), est, (offers, seen));
             });
+            RecordLaunchTargets(suggestions.seen);
             Apply(entries, detected, avail, estimated);
-            SyncSuggestions(suggestions);
+            SyncSuggestions(suggestions.offers);
         }
         catch (Exception e)
         {
@@ -292,9 +315,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 BusyText = "Switching back...";
                 var closed = session ?? new SessionState();
-                var failed = await switcher.BackToCodingAsync(Settings.Clone(), closed, progress);
+                var result = await switcher.BackToCodingAsync(Settings.Clone(), closed, progress);
+                var targets = Switcher.LaunchTargets(Settings);
                 failedReopen.Clear();
-                failedReopen.UnionWith(closed.Closed.Where(c => failed.Contains(c.Name)).Select(c => c.EntryId));
+                failedReopen.UnionWith(closed.Closed.Concat(targets.Values).Where(c => result.Failed.Contains(c.Name)).Select(c => c.EntryId));
+                LastReturnMessage =
+                    (result.Opened.Count > 0 ? "Opened " + string.Join(", ", result.Opened) + "." : "Your apps are ready.")
+                    + (result.Failed.Count > 0 ? " Couldn't open " + string.Join(", ", result.Failed) + "." : "");
                 session = null;
                 Mode = Mode.Coding;
             }
@@ -324,6 +351,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _ = RefreshAsync();
     }
 
+    private void OnVibe(AppRow row, bool on)
+    {
+        Settings.VibeApps.Remove(row.Id);
+        if (on) Settings.VibeApps.Add(row.Id);
+        SaveSettings();
+    }
+
+    /// <summary>Remembers how to start each running app, so it can be opened as a vibe app later.</summary>
+    private void RecordLaunchTargets(IReadOnlyDictionary<string, ClosedApp> seen)
+    {
+        bool changed = false;
+        foreach (var (id, target) in seen)
+        {
+            if (Settings.LaunchTargets.TryGetValue(id, out var known) && known == target) continue;
+            Settings.LaunchTargets[id] = target;
+            changed = true;
+        }
+        if (changed && !demo) store.SaveSettings(Settings);
+    }
+
     private void Apply(IReadOnlyList<CatalogEntry> entries, IReadOnlyList<Detected> detected, long avail, long estimated)
     {
         var running = detected.ToDictionary(d => d.Entry.Id);
@@ -345,11 +392,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var row = Row(e);
             row.IsRunning = isRunning;
             row.SetIsOnSilently(Settings.IsOn(e));
+            row.SetIsVibeSilently(Settings.VibeApps.Contains(e.Id));
             row.ShowToggle = IsCoding;
             row.RamText = isRunning ? Format.Bytes(d!.Bytes) : "not running";
             if (isRunning) failedReopen.Remove(e.Id);
 
-            if (IsGaming && closedIds.Contains(e.Id))
+            if (IsGaming && !isRunning && !closedIds.Contains(e.Id) && row.IsVibe)
+            {
+                row.IsDimmed = true;
+                row.Tag = "opens after"; // a vibe app that wasn't open: it starts when you switch back
+            }
+            else if (IsGaming && closedIds.Contains(e.Id))
             {
                 row.IsDimmed = true;
                 bool wslOnly = e.Kind == EntryKind.DockerWsl && session!.Closed.All(c => c.EntryId != e.Id);
@@ -365,7 +418,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             all.Add(row);
         }
 
-        var home = all.Where(r => IsGaming ? r.IsRunning || closedIds.Contains(r.Id) : r.IsRunning || failedReopen.Contains(r.Id)).ToList();
+        var home = all.Where(r => IsGaming
+            ? r.IsRunning || closedIds.Contains(r.Id) || r.Tag == "opens after"
+            : r.IsRunning || failedReopen.Contains(r.Id)).ToList();
         Sync(AllRows, all);
         Sync(HomeRows, home);
 
@@ -388,6 +443,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             var row = Row(AppCatalog.BuiltIn.Single(e => e.Id == id));
             row.SetIsOnSilently(on);
+            row.SetIsVibeSilently(id is "claude-desktop" or "chatgpt");
             row.IsRunning = IsCoding || !on;
             row.ShowToggle = IsCoding;
             row.RamText = Format.Bytes(bytes);
@@ -413,7 +469,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private AppRow Row(CatalogEntry e)
     {
-        if (!rows.TryGetValue(e.Id, out var row)) rows[e.Id] = row = new AppRow(e, demo ? null : OnToggle);
+        if (!rows.TryGetValue(e.Id, out var row)) rows[e.Id] = row = new AppRow(e, demo ? null : OnToggle, demo ? null : OnVibe);
         return row;
     }
 

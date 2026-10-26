@@ -297,6 +297,15 @@ public class SwitchPlannerTests
         Assert.Equal(@"C:\Tools\thing.exe", target.ExePath);
     }
 
+    [Fact] // 1.2: a launcher VibeShift saw an added app use (e.g. a Store app's AUMID) beats its raw exe path
+    public void Recorded_launcher_wins_over_a_custom_apps_path()
+    {
+        var id = AppCatalog.Custom(@"C:\Store\paint.exe").Id;
+        var s = new Settings { CustomApps = { @"C:\Store\paint.exe" } };
+        s.LaunchTargets[id] = new ClosedApp(id, "Paint", @"C:\Store\paint.exe", "Microsoft.Paint_8wekyb3d8bbwe!App");
+        Assert.Equal("Microsoft.Paint_8wekyb3d8bbwe!App", Switcher.LaunchTargets(s)[id].Aumid);
+    }
+
     [Fact] // M12d: case-variant custom paths are one app, not a crash
     public void Custom_paths_differing_only_in_case_are_one_entry()
     {

@@ -1,16 +1,22 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using VibeShift.Core.Games;
 
 namespace VibeShift;
 
-/// <summary>The icon by the clock. Left-click opens the window; right-click switches or quits.</summary>
+/// <summary>
+/// The icon by the clock (or under the ^ arrow). A small dot shows the mode at a glance: green for vibe coding,
+/// purple for gaming. Left-click opens the window; right-click switches or quits.
+/// </summary>
 public sealed class Tray : IDisposable
 {
     private readonly NotifyIcon icon;
     private readonly ToolStripMenuItem toggleItem;
+    private readonly Icon codingIcon, gamingIcon;
 
     public Tray(Action open, Func<Task> toggle, Action quit)
     {
@@ -21,10 +27,15 @@ public sealed class Tray : IDisposable
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => quit());
 
-        using var stream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/VibeShift.ico")).Stream;
+        using (var stream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/VibeShift.ico")).Stream)
+        using (var app = new Icon(stream, SystemInformation.SmallIconSize))
+        {
+            codingIcon = WithDot(app, Color.FromArgb(0x34, 0xd3, 0x99));
+            gamingIcon = WithDot(app, Color.FromArgb(0xa8, 0x55, 0xf7));
+        }
         icon = new NotifyIcon
         {
-            Icon = new Icon(stream, SystemInformation.SmallIconSize),
+            Icon = codingIcon,
             ContextMenuStrip = menu,
             Text = "VibeShift: Vibe coding mode",
             Visible = true,
@@ -33,18 +44,55 @@ public sealed class Tray : IDisposable
         {
             if (e.Button == MouseButtons.Left) open();
         };
+        icon.BalloonTipClicked += (_, _) => open();
     }
 
     public void Update(Mode mode)
     {
         bool gaming = mode == Mode.Gaming;
+        icon.Icon = gaming ? gamingIcon : codingIcon;
         icon.Text = gaming ? "VibeShift: Gaming mode" : "VibeShift: Vibe coding mode";
         toggleItem.Text = gaming ? "Back to vibe coding" : "Start gaming";
     }
+
+    /// <summary>A Windows notification, e.g. "Back to vibe coding: opened Claude, ChatGPT". Only used once you've stopped playing.</summary>
+    public void Notify(string title, string text) => icon.ShowBalloonTip(5000, title, text, ToolTipIcon.None);
 
     public void Dispose()
     {
         icon.Visible = false;
         icon.Dispose();
+        codingIcon.Dispose();
+        gamingIcon.Dispose();
     }
+
+    /// <summary>The app icon with a mode-coloured dot (white-ringed so it shows on any taskbar) in the corner.</summary>
+    private static Icon WithDot(Icon app, Color dot)
+    {
+        var size = SystemInformation.SmallIconSize;
+        using var bmp = new Bitmap(size.Width, size.Height);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.DrawIcon(app, new Rectangle(Point.Empty, size));
+            int d = Math.Max(6, size.Width / 2);
+            var ring = new Rectangle(size.Width - d, size.Height - d, d - 1, d - 1);
+            using (var white = new SolidBrush(Color.White)) g.FillEllipse(white, ring);
+            ring.Inflate(-Math.Max(1, d / 6), -Math.Max(1, d / 6));
+            using (var fill = new SolidBrush(dot)) g.FillEllipse(fill, ring);
+        }
+        IntPtr handle = bmp.GetHicon();
+        try
+        {
+            using var temp = Icon.FromHandle(handle);
+            return (Icon)temp.Clone(); // the clone owns its own handle
+        }
+        finally
+        {
+            DestroyIcon(handle);
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr handle);
 }

@@ -74,7 +74,8 @@ public partial class App : Application
 
         // A leftover session.json means we crashed or rebooted mid-game: the view model opens in Gaming mode.
         vm = new MainViewModel(store, settings);
-        if (vm.SessionIsAutomatic) tracker.ResumeAutoSession(DateTime.UtcNow);
+        // Mid-game crash or reboot: keep switching back by itself once the game is gone.
+        if (vm.HasSession && (vm.SessionIsAutomatic || settings.ReturnWhenGameCloses)) tracker.ResumeAutoSession(DateTime.UtcNow);
         window = new MainWindow(vm);
         window.Closing += (_, ev) =>
         {
@@ -88,7 +89,9 @@ public partial class App : Application
         vm.Switched += (mode, automatic) =>
         {
             tray.Update(mode);
-            if (!automatic) tracker.ManualSwitch(mode, vm.CurrentGamePids);
+            if (!automatic) tracker.ManualSwitch(mode, vm.CurrentGamePids, vm.Settings.ReturnWhenGameCloses);
+            // Back from gaming with the window out of sight: say what opened. Nothing ever pops up while you play.
+            if (mode == Mode.Coding && !window.IsVisible) tray.Notify("Back to vibe coding", vm.LastReturnMessage);
         };
         vm.SettingsChanged += RebuildWatcher;
         vm.FindGames = () => watcher is { } w ? w.Scan(ProcessSnapshot.Take()) : [];
@@ -119,12 +122,18 @@ public partial class App : Application
         try
         {
             if (window.IsVisible) await vm.RefreshAsync();
-            if (vm.Settings.AutoMode && watcher is { } w)
+            // Watch for games starting (Auto mode) or, while gaming, for the game closing (Auto mode or
+            // "Switch back when my game closes").
+            var s = vm.Settings;
+            bool watchStart = s.AutoMode && vm.Mode == Mode.Coding;
+            bool watchEnd = vm.Mode == Mode.Gaming && (s.AutoMode || s.ReturnWhenGameCloses);
+            if ((watchStart || watchEnd) && watcher is { } w)
             {
                 var games = await Task.Run(() => w.Scan(ProcessSnapshot.Take()));
                 vm.CurrentGamePids = games;
                 // Automatic switches never show or activate the window; only the tray tooltip changes.
-                if (tracker.Update(games, vm.Mode, DateTime.UtcNow) != AutoAction.None) await vm.ToggleModeAsync(automatic: true);
+                if (tracker.Update(games, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode) != AutoAction.None)
+                    await vm.ToggleModeAsync(automatic: true);
             }
         }
         catch (Exception ex)

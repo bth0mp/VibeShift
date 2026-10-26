@@ -6,6 +6,9 @@ using VibeShift.Core.State;
 
 namespace VibeShift.Core.Switching;
 
+/// <summary>What switching back opened, and what it couldn't (by app name).</summary>
+public sealed record ReopenResult(IReadOnlyList<string> Opened, IReadOnlyList<string> Failed);
+
 /// <summary>
 /// Carries out SwitchPlanner's decisions. Every step and every process is attempted on its own:
 /// one failure is logged and skipped, never allowed to stop the rest.
@@ -16,14 +19,17 @@ public sealed class Switcher(JsonStore store)
     public static IReadOnlyList<CatalogEntry> Entries(Settings s) =>
         s.CustomApps.Select(AppCatalog.Custom).Concat(AppCatalog.BuiltIn).DistinctBy(e => e.Id).ToList();
 
-    /// <summary>How to start every app the user could pick as a vibe app: recorded launchers, plus custom apps' own paths.</summary>
+    /// <summary>
+    /// How to start every app the user could pick as a vibe app: launchers recorded while it ran (which know a
+    /// Store app's AUMID), else a custom app's own exe path.
+    /// </summary>
     public static IReadOnlyDictionary<string, ClosedApp> LaunchTargets(Settings s)
     {
         var targets = new Dictionary<string, ClosedApp>(s.LaunchTargets);
         foreach (var path in s.CustomApps)
         {
             var e = AppCatalog.Custom(path);
-            targets[e.Id] = new ClosedApp(e.Id, e.Name, path, null);
+            targets.TryAdd(e.Id, new ClosedApp(e.Id, e.Name, path, null));
         }
         return targets;
     }
@@ -31,7 +37,7 @@ public sealed class Switcher(JsonStore store)
     public Task<SessionState> StartGamingAsync(Settings s, bool automatic, IReadOnlyCollection<int> gamePids, IProgress<string>? progress) =>
         Task.Run(() => StartGaming(s, automatic, gamePids, progress));
 
-    public Task<IReadOnlyList<string>> BackToCodingAsync(Settings s, SessionState session, IProgress<string>? progress) =>
+    public Task<ReopenResult> BackToCodingAsync(Settings s, SessionState session, IProgress<string>? progress) =>
         Task.Run(() => BackToCoding(s, session, progress));
 
     private SessionState StartGaming(Settings s, bool automatic, IReadOnlyCollection<int> gamePids, IProgress<string>? progress)
@@ -109,7 +115,7 @@ public sealed class Switcher(JsonStore store)
         return session;
     }
 
-    private IReadOnlyList<string> BackToCoding(Settings s, SessionState session, IProgress<string>? progress)
+    private ReopenResult BackToCoding(Settings s, SessionState session, IProgress<string>? progress)
     {
         if (session.StoppedServices.Count > 0)
         {
@@ -121,7 +127,8 @@ public sealed class Switcher(JsonStore store)
         IReadOnlyList<Detected> Running() => SwitchPlanner.Detect(ProcessSnapshot.Take(), Entries(s), ProcessQuery.GetImagePath,
             ProcessQuery.GetCommandLine, p => p.SessionId != mySession);
 
-        var toOpen = SwitchPlanner.PlanReopen(session, Running());
+        // What was closed for gaming, plus the user's vibe apps that aren't open yet.
+        var toOpen = SwitchPlanner.PlanVibeLaunch(session, Running(), s.VibeApps, LaunchTargets(s));
         var failed = new List<string>();
         var viaShell = new List<ClosedApp>();
         var known = Entries(s).Select(e => e.Id).ToHashSet();
@@ -159,8 +166,8 @@ public sealed class Switcher(JsonStore store)
         }
 
         store.ClearSession();
-        Log.Write($"Vibe coding mode: reopened {toOpen.Count - failed.Count} of {toOpen.Count}");
-        return failed;
+        Log.Write($"Vibe coding mode: opened {toOpen.Count - failed.Count} of {toOpen.Count}");
+        return new ReopenResult(toOpen.Select(a => a.Name).Where(n => !failed.Contains(n)).Distinct().ToList(), failed);
     }
 
     private static void PoliteClose(IEnumerable<ProcInfo> roots, int seconds)

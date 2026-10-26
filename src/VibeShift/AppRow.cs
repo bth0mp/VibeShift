@@ -15,13 +15,15 @@ public sealed class AppRow : INotifyPropertyChanged
         "Stops every MCP server, including ones used by apps that stay open. Those apps get their tools back when they restart.";
 
     private readonly Action<AppRow, bool>? onToggle;
-    private bool isOn, isRunning, isDimmed, showToggle;
+    private readonly Action<AppRow, bool>? onVibe;
+    private bool isOn, isVibe, isRunning, isDimmed, showToggle;
     private string ramText = "", tag = "";
 
-    public AppRow(CatalogEntry entry, Action<AppRow, bool>? onToggle)
+    public AppRow(CatalogEntry entry, Action<AppRow, bool>? onToggle, Action<AppRow, bool>? onVibe = null)
     {
         Entry = entry;
         this.onToggle = onToggle;
+        this.onVibe = onVibe;
         BadgeBrush = (Brush)new BrushConverter().ConvertFromString(entry.Color)!;
         BadgeBrush.Freeze();
     }
@@ -55,6 +57,19 @@ public sealed class AppRow : INotifyPropertyChanged
         }
     }
 
+    /// <summary>"Open when vibing": started every time you switch back. Saves through the callback.</summary>
+    public bool IsVibe
+    {
+        get => isVibe;
+        set
+        {
+            if (Set(ref isVibe, value)) onVibe?.Invoke(this, value);
+        }
+    }
+
+    /// <summary>Only apps VibeShift can start again can be vibe apps (not MCP servers, CLI agents or Widgets).</summary>
+    public bool CanVibe => Entry.Reopen;
+
     public bool IsRunning { get => isRunning; set => Set(ref isRunning, value); }
     public bool IsDimmed { get => isDimmed; set => Set(ref isDimmed, value); }
     public bool ShowToggle { get => showToggle; set => Set(ref showToggle, value); }
@@ -79,6 +94,8 @@ public sealed class AppRow : INotifyPropertyChanged
 
     /// <summary>Reflects saved state without calling the save callback.</summary>
     public void SetIsOnSilently(bool value) => Set(ref isOn, value, nameof(IsOn));
+
+    public void SetIsVibeSilently(bool value) => Set(ref isVibe, value, nameof(IsVibe));
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
