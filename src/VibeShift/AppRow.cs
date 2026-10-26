@@ -65,6 +65,9 @@ public sealed class AppRow : INotifyPropertyChanged
     public bool HasTag => Tag.Length > 0;
     public bool ShowRam => !HasTag && RamText.Length > 0;
 
+    /// <summary>What screen readers announce for the list item.</summary>
+    public override string ToString() => Name;
+
     /// <summary>Reflects saved state without calling the save callback.</summary>
     public void SetIsOnSilently(bool value) => Set(ref isOn, value, nameof(IsOn));
 

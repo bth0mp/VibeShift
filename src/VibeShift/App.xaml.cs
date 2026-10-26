@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -71,6 +72,7 @@ public partial class App : Application
             if (quitting) return;
             ev.Cancel = true;
             window.Hide();
+            Dispatcher.BeginInvoke(TrimMemory, DispatcherPriority.ApplicationIdle);
         };
         tray = new Tray(ShowWindow, () => vm.ToggleModeAsync(automatic: false), Quit);
         tray.Update(vm.Mode);
@@ -83,6 +85,7 @@ public partial class App : Application
         RebuildWatcher();
 
         if (!e.Args.Contains("--tray")) window.Show();
+        else Dispatcher.BeginInvoke(TrimMemory, DispatcherPriority.ApplicationIdle);
         _ = vm.RefreshAsync();
 
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -149,6 +152,18 @@ public partial class App : Application
             return false;
         }
     }
+
+    /// <summary>Sitting in the tray (e.g. while gaming), hand unused pages back to Windows.</summary>
+    private static void TrimMemory()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        using var self = Process.GetCurrentProcess();
+        SetProcessWorkingSetSize(self.Handle, -1, -1);
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetProcessWorkingSetSize(IntPtr process, nint min, nint max);
 
     private void ShowWindow()
     {
