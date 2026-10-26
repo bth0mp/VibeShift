@@ -47,6 +47,11 @@ public class CatalogTests
     [InlineData("pythonw", "\"D:\\x\\.venv\\Scripts\\pythonw.exe\" -m coinwatch --data-dir C:\\cw run --host 127.0.0.1 --port 8000", false)]
     [InlineData("Code", "Code.exe --mcp", false)]
     [InlineData("node", null, false)]
+    // review I2: "mcp" must be its own token, not part of a user or folder name
+    [InlineData("node", "node C:\\Users\\McPherson\\app.js", false)]
+    [InlineData("node", "node D:\\games\\mcpe\\server.js", false)]
+    [InlineData("python", "python mcp_server.py", true)]
+    [InlineData("node", "node C:\\x\\weather-mcp\\index.js", true)]
     public void Mcp_matching(string name, string? cmd, bool expected) => Assert.Equal(expected, McpMatcher.IsMcp(name, cmd));
 
     [Fact]

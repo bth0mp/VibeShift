@@ -57,7 +57,9 @@ Closing the window keeps VibeShift running as a small icon by the clock. Right-c
 
 - **When apps show up.** An app appears in VibeShift once it has seen it running. Use **+ Add app** to add any other program.
 - **MCP servers.** VibeShift spots these by their command line (`mcp`, `modelcontextprotocol`, `desktop-commander`). Other Node or Python processes, such as language servers, dev servers and your own scripts, are left alone. With the MCP row switched on, every MCP server stops, including ones used by apps you keep open. Those apps get their tools back when they restart.
-- **What it never closes.** Windows' own processes, the game you're playing, and VibeShift itself.
+- **What it never closes.** Windows' own processes, the game you're playing (or anything it started), and VibeShift itself.
+- **Separate apps stay open.** A browser opened from a link in Claude, or an app whose row you switched off, survives even if a closed app started it.
+- **Started VibeShift from an app's terminal?** Then that app is left running, since VibeShift can't close part of it and reopen it afterwards.
 
 ## Auto mode
 

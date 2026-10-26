@@ -51,6 +51,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>Game PIDs seen by Auto mode; kept out of reach of the switch.</summary>
     public IReadOnlyCollection<int> CurrentGamePids { get; set; } = [];
 
+    /// <summary>Finds running games right now, so every switch (not just Auto mode's) protects the game.</summary>
+    public Func<IReadOnlyCollection<int>>? FindGames { get; set; }
+
     public ObservableCollection<AppRow> HomeRows { get; } = [];
     public ObservableCollection<AppRow> AllRows { get; } = [];
     public ObservableCollection<string> MyGames { get; }
@@ -221,7 +224,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var all = ProcessSnapshot.Take();
             var det = SwitchPlanner.Detect(all, entries, ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
                 p => BlockList.IsBlocked(p.Name, null, p.Pid, self, new HashSet<int>()));
-            long est = SwitchPlanner.PlanGaming(all, det, Settings, automatic: false, self).EstimatedBytes;
+            // The estimate only sums row RAM, so it doesn't need the (costly) per-process spare checks.
+            long est = SwitchPlanner.PlanGaming(all, det, Settings, automatic: false, self, (_, _) => false).EstimatedBytes;
             return (det, ProcessQuery.AvailableRamBytes(), est);
         });
         Apply(entries, detected, avail, estimated);
@@ -237,6 +241,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (Mode == Mode.Coding)
             {
                 BusyText = "Switching...";
+                if (FindGames is { } find) CurrentGamePids = await Task.Run(find);
                 session = await switcher.StartGamingAsync(Settings, automatic, CurrentGamePids, progress);
                 failedReopen.Clear();
                 Mode = Mode.Gaming;

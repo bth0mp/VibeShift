@@ -30,7 +30,15 @@ public sealed class Switcher(JsonStore store)
         var games = gamePids.ToHashSet();
         var detected = SwitchPlanner.Detect(all, Entries(s), ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
             p => BlockList.IsBlocked(p.Name, ProcessQuery.GetImagePath(p.Pid), p.Pid, self, games));
-        var plan = SwitchPlanner.PlanGaming(all, detected, s, automatic, self);
+        // Never reach the game (or anything it started), Windows' own processes, or separate windowed apps.
+        var gameTree = games.SelectMany(g => ProcessTree.Descendants(all, g)).Select(p => p.Pid).ToHashSet();
+        var plan = SwitchPlanner.PlanGaming(all, detected, s, automatic, self, (node, root) =>
+        {
+            if (gameTree.Contains(node.Pid)) return true;
+            var path = ProcessQuery.GetImagePath(node.Pid);
+            return BlockList.IsBlocked(node.Name, path, node.Pid, self, games)
+                || SwitchPlanner.IsSeparateApp(path, ProcessQuery.GetImagePath(root.Pid), ProcessQuery.HasVisibleWindow(node.Pid));
+        });
 
         foreach (var target in plan.Close)
         {

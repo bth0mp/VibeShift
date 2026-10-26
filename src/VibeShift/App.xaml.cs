@@ -82,6 +82,7 @@ public partial class App : Application
             if (!automatic) tracker.ManualSwitch(mode, vm.CurrentGamePids);
         };
         vm.SettingsChanged += RebuildWatcher;
+        vm.FindGames = () => watcher is { } w ? w.Scan(ProcessSnapshot.Take()) : [];
         RebuildWatcher();
 
         if (!e.Args.Contains("--tray")) window.Show();
@@ -132,24 +133,11 @@ public partial class App : Application
         {
             var games = vm!.Settings.MyGames.ToList();
             var roots = await Task.Run(GameLibraries.Discover);
-            watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, HasVisibleWindow);
+            watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, ProcessQuery.HasVisibleWindow);
         }
         catch (Exception ex)
         {
             Log.Write("Game watcher rebuild failed: " + ex.Message);
-        }
-    }
-
-    private static bool HasVisibleWindow(int pid)
-    {
-        try
-        {
-            using var p = Process.GetProcessById(pid);
-            return p.MainWindowHandle != IntPtr.Zero;
-        }
-        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
-        {
-            return false;
         }
     }
 

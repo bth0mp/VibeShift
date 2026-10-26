@@ -16,6 +16,21 @@ public class GameTests
     public void Epic_manifest_install_location() =>
         Assert.Equal(@"E:\Epic\Fortnite", GameLibraries.ParseEpicInstallLocation("{\"InstallLocation\": \"E:\\\\Epic\\\\Fortnite\"}"));
 
+    [Fact] // review I3: engines and tools from Epic aren't games
+    public void Epic_manifest_without_games_category_is_skipped()
+    {
+        Assert.Null(GameLibraries.ParseEpicInstallLocation("{\"InstallLocation\": \"E:\\\\UE_5.4\", \"AppCategories\": [\"engines\"]}"));
+        Assert.Equal(@"D:\Epic Games\Fortnite",
+            GameLibraries.ParseEpicInstallLocation("{\"InstallLocation\": \"D:\\\\Epic Games\\\\Fortnite\", \"AppCategories\": [\"games\", \"applications\"]}"));
+    }
+
+    [Theory] // review I3: creative tools sold on Steam aren't games
+    [InlineData(@"D:\SteamLibrary\steamapps\common\Blender\blender.exe")]
+    [InlineData(@"D:\SteamLibrary\steamapps\common\Godot Engine\godot.exe")]
+    [InlineData(@"D:\SteamLibrary\steamapps\common\RPG Maker MZ\RPGMZ.exe")]
+    public void Steam_creative_tools_are_not_games(string path) =>
+        Assert.False(GameRules.IsGame(path, new[] { Root }, Array.Empty<string>(), true));
+
     [Theory] // Review Focus 4
     [InlineData(@"D:\SteamLibrary\steamapps\common\Deadlock\game\bin\win64\deadlock.exe", true, true)]
     [InlineData(@"d:\steamlibrary\STEAMAPPS\common\Deadlock\deadlock.exe", true, true)]

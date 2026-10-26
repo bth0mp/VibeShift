@@ -13,12 +13,17 @@ public static partial class GameLibraries
     public static IReadOnlyList<string> ParseSteamLibraryFolders(string vdf) =>
         SteamPathEntry().Matches(vdf).Select(m => m.Groups[1].Value.Replace(@"\\", @"\")).ToList();
 
+    /// <summary>The install folder of an Epic game, or null for engines and tools (AppCategories without "games").</summary>
     public static string? ParseEpicInstallLocation(string itemJson)
     {
         try
         {
             using var doc = JsonDocument.Parse(itemJson);
-            return doc.RootElement.TryGetProperty("InstallLocation", out var v) ? v.GetString() : null;
+            var root = doc.RootElement;
+            if (root.TryGetProperty("AppCategories", out var cats) && cats.ValueKind == JsonValueKind.Array
+                && !cats.EnumerateArray().Any(c => string.Equals(c.GetString(), "games", StringComparison.OrdinalIgnoreCase)))
+                return null;
+            return root.TryGetProperty("InstallLocation", out var v) ? v.GetString() : null;
         }
         catch (JsonException)
         {

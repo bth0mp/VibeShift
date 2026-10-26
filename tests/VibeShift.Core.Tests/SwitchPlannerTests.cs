@@ -19,8 +19,8 @@ public class SwitchPlannerTests
     private IReadOnlyList<Detected> Detect(IReadOnlyList<ProcInfo> all, Func<ProcInfo, bool>? blocked = null) =>
         SwitchPlanner.Detect(all, AppCatalog.BuiltIn, pid => paths.GetValueOrDefault(pid), pid => cmds.GetValueOrDefault(pid), blocked ?? (_ => false));
 
-    private GamingPlan Plan(IReadOnlyList<ProcInfo> all, bool automatic = false, int selfPid = 99_999) =>
-        SwitchPlanner.PlanGaming(all, Detect(all), settings, automatic, selfPid);
+    private GamingPlan Plan(IReadOnlyList<ProcInfo> all, bool automatic = false, int selfPid = 99_999, Func<ProcInfo, ProcInfo, bool>? spare = null) =>
+        SwitchPlanner.PlanGaming(all, Detect(all), settings, automatic, selfPid, spare ?? ((_, _) => false));
 
     [Fact]
     public void Only_switched_on_running_rows_close()
@@ -41,18 +41,42 @@ public class SwitchPlannerTests
         Assert.Equal(40, cursor.Bytes);
     }
 
-    [Fact] // Review Focus 1
-    public void Kill_list_spares_self_and_its_parent_chain()
+    [Fact] // Review Focus 1, review I4: a half-killed app could never be reopened, so leave it whole
+    public void App_that_VibeShift_runs_inside_is_left_alone()
     {
         var all = new[] { P(100, 0, "claude"), P(200, 100, "bash"), P(300, 200, "VibeShift"), P(201, 100, "node") };
         paths[100] = Desk;
         cmds[201] = "node mcp-server-x";
-        var kill = Plan(all, selfPid: 300).Close.Single(c => c.Entry.Id == "claude-desktop").KillPids;
-        Assert.DoesNotContain(100, kill);
-        Assert.DoesNotContain(200, kill);
-        Assert.DoesNotContain(300, kill);
-        Assert.Contains(201, kill);
+        var plan = Plan(all, selfPid: 300);
+        Assert.DoesNotContain(plan.Close, c => c.Entry.Id == "claude-desktop");
+        Assert.Equal(new[] { 201 }, plan.Close.Single(c => c.Entry.Id == "mcp").KillPids);
+        Assert.Equal(10, plan.EstimatedBytes); // only the MCP server is counted
     }
+
+    [Fact] // review C1: the game and Windows processes are never killed, nor anything under them
+    public void Kill_walk_skips_spared_processes_and_their_children()
+    {
+        var all = new[] { P(1, 0, "Cursor"), P(2, 1, "conhost"), P(3, 2, "node"), P(4, 1, "deadlock"), P(5, 1, "Cursor") };
+        var kill = Plan(all, spare: (node, _) => node.Pid is 2 or 4).Close.Single().KillPids;
+        Assert.Equal(new[] { 5, 1 }, kill);
+    }
+
+    [Fact] // review I1: an app the user switched off survives even when a switched-on app started it
+    public void Descendant_belonging_to_a_switched_off_row_is_spared()
+    {
+        var all = new[] { P(1, 0, "claude"), P(2, 1, "Code"), P(3, 2, "Code") };
+        paths[1] = Desk;
+        paths[2] = paths[3] = @"C:\x\Code.exe";
+        Assert.Equal(new[] { 1 }, Plan(all).Close.Single(c => c.Entry.Id == "claude-desktop").KillPids);
+    }
+
+    [Theory] // review I1: a browser opened from Claude is its own app, not part of Claude
+    [InlineData(@"C:\Program Files\Mozilla Firefox\firefox.exe", true, true)]
+    [InlineData(@"C:\Program Files\WindowsApps\Claude_3.6556.2.0_x64__pzs8sxrjxfjjc\app\resources\helper.exe", true, false)]
+    [InlineData(@"C:\Program Files\Mozilla Firefox\firefox.exe", false, false)]
+    [InlineData(null, true, false)]
+    public void Separate_windowed_app(string? path, bool hasWindow, bool expected) =>
+        Assert.Equal(expected, SwitchPlanner.IsSeparateApp(path, Desk, hasWindow));
 
     [Fact]
     public void Kill_list_is_children_first()

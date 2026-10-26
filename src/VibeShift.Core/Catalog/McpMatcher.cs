@@ -11,7 +11,8 @@ public static partial class McpMatcher
     private static readonly HashSet<string> Runtimes = new(StringComparer.OrdinalIgnoreCase)
         { "node", "npx", "python", "pythonw", "python3", "uv", "uvx", "bun", "deno", "cmd" };
 
-    [GeneratedRegex("mcp|modelcontextprotocol|desktop-commander", RegexOptions.IgnoreCase)]
+    // "mcp" only as its own token (weather-mcp, mcp_server.py), never inside a word like McPherson or mcpe.
+    [GeneratedRegex("(?<![a-z])mcp(?![a-z])|modelcontextprotocol|desktop-commander", RegexOptions.IgnoreCase)]
     private static partial Regex Pattern();
 
     public static bool IsMcp(string name, string? commandLine) =>

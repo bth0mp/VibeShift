@@ -5,19 +5,19 @@ namespace VibeShift.Core.Games;
 
 public static class GameRules
 {
-    private static readonly Regex[] ExcludedFiles =
-        new[]
-        {
-            "steam", "steamwebhelper", "steamservice", "EpicGamesLauncher", "EpicWebHelper", "UnityCrashHandler*",
-            "CrashReport*", "*CrashHandler*", "EasyAntiCheat*", "BEService*", "vcredist*", "DXSETUP", "*Setup*",
-            "*Installer*", "wallpaper32", "wallpaper64",
-        }
-        .Select(p => new Regex("^" + Regex.Escape(p).Replace(@"\*", ".*") + "$", RegexOptions.IgnoreCase))
-        .ToArray();
+    private static readonly Regex[] ExcludedFiles = Wildcards(
+        "steam", "steamwebhelper", "steamservice", "EpicGamesLauncher", "EpicWebHelper", "UnityCrashHandler*",
+        "CrashReport*", "*CrashHandler*", "EasyAntiCheat*", "BEService*", "vcredist*", "DXSETUP", "*Setup*",
+        "*Installer*", "wallpaper32", "wallpaper64");
 
-    // ponytail: name list of non-game Steam apps; upgrade path is reading the app type from Steam's appinfo.vdf
-    private static readonly HashSet<string> ExcludedFolders = new(StringComparer.OrdinalIgnoreCase)
-        { "wallpaper_engine", "Steamworks Shared", "OBS Studio", "Soundpad", "Lossless Scaling" };
+    // ponytail: name list of non-game Steam apps (tools, engines, creative apps); upgrade path is reading the
+    // app type from Steam's appinfo.vdf
+    private static readonly Regex[] ExcludedFolders = Wildcards(
+        "wallpaper_engine", "Steamworks Shared", "OBS Studio", "Soundpad", "Lossless Scaling", "Blender", "Godot*",
+        "RPG Maker*", "GameMaker*", "Aseprite", "Krita", "Substance 3D*", "Pixel Composer", "Bforartists");
+
+    private static Regex[] Wildcards(params string[] patterns) =>
+        patterns.Select(p => new Regex("^" + Regex.Escape(p).Replace(@"\*", ".*") + "$", RegexOptions.IgnoreCase)).ToArray();
 
     public static bool IsGame(string imagePath, IReadOnlyList<string> roots, IReadOnlyList<string> myGames, bool hasVisibleWindow) =>
         IsMyGame(imagePath, myGames) || (IsCandidate(imagePath, roots) && hasVisibleWindow);
@@ -32,7 +32,7 @@ public static class GameRules
         var file = Path.GetFileNameWithoutExtension(imagePath);
         if (ExcludedFiles.Any(rx => rx.IsMatch(file))) return false;
         var folders = Path.GetDirectoryName(imagePath)?.Split('\\') ?? [];
-        return !folders.Any(ExcludedFolders.Contains);
+        return !folders.Any(f => ExcludedFolders.Any(rx => rx.IsMatch(f)));
     }
 }
 
@@ -45,7 +45,13 @@ public sealed class GameWatcher(
 {
     private readonly Dictionary<(int Pid, long CreateTime), string?> paths = [];
 
+    /// <summary>Thread-safe: Auto mode's poll and a manual switch may both scan.</summary>
     public IReadOnlyCollection<int> Scan(IReadOnlyList<ProcInfo> snapshot)
+    {
+        lock (paths) return ScanLocked(snapshot);
+    }
+
+    private List<int> ScanLocked(IReadOnlyList<ProcInfo> snapshot)
     {
         var live = new HashSet<(int, long)>();
         var games = new List<int>();

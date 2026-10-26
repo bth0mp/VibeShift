@@ -57,6 +57,19 @@ public static class ProcessQuery
         return Win32.GetApplicationUserModelId(h, ref len, buf) == 0 ? new string(buf, 0, len - 1) : null;
     }
 
+    public static bool HasVisibleWindow(int pid)
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById(pid);
+            return p.MainWindowHandle != IntPtr.Zero;
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     public static long AvailableRamBytes() => (long)MemoryStatus().ullAvailPhys;
 
     public static long TotalRamBytes() => (long)MemoryStatus().ullTotalPhys;

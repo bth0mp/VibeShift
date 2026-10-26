@@ -53,17 +53,31 @@ public static class SwitchPlanner
         return result;
     }
 
-    public static GamingPlan PlanGaming(IReadOnlyList<ProcInfo> all, IReadOnlyList<Detected> detected, Settings s, bool automatic, int selfPid)
+    /// <param name="spare">
+    /// (process, root it was found under) -> true to keep that process and everything under it alive:
+    /// the game, Windows' own processes, separate apps the target merely launched.
+    /// </param>
+    public static GamingPlan PlanGaming(
+        IReadOnlyList<ProcInfo> all,
+        IReadOnlyList<Detected> detected,
+        Settings s,
+        bool automatic,
+        int selfPid,
+        Func<ProcInfo, ProcInfo, bool> spare)
     {
-        var spare = ProcessTree.Ancestors(all, selfPid);
+        var selfChain = ProcessTree.Ancestors(all, selfPid);
+        // An app whose row is off survives even when a switched-on app started it.
+        var offRoots = detected.Where(d => !s.IsOn(d.Entry)).SelectMany(d => d.Roots).Select(r => r.Pid).ToHashSet();
         var close = new List<CloseTarget>();
         foreach (var d in detected)
         {
             if (!s.IsOn(d.Entry) || d.Roots.Count == 0) continue;
+            // VibeShift runs inside this app (e.g. started from its terminal): closing part of it would leave
+            // a broken app we couldn't reopen, so leave the whole app alone.
+            if (d.Roots.Any(r => selfChain.Contains(r.Pid))) continue;
             var kill = d.Roots
-                .SelectMany(r => ProcessTree.Descendants(all, r.Pid))
+                .SelectMany(r => ProcessTree.Descendants(all, r.Pid, node => offRoots.Contains(node.Pid) || spare(node, r)))
                 .Select(p => p.Pid)
-                .Where(pid => !spare.Contains(pid))
                 .Distinct()
                 .ToList();
             var reopen = d.Entry.Reopen
@@ -73,8 +87,9 @@ public static class SwitchPlanner
         }
 
         bool shutdownWsl = detected.Any(d => d.Entry.Kind == EntryKind.DockerWsl && s.IsOn(d.Entry)) && all.Any(IsWslVm);
+        var closing = close.Select(t => t.Entry.Id).ToHashSet();
         long estimated = detected
-            .Where(d => s.IsOn(d.Entry) && (d.Roots.Count > 0 || (d.Entry.Kind == EntryKind.DockerWsl && shutdownWsl)))
+            .Where(d => closing.Contains(d.Entry.Id) || (d.Entry.Kind == EntryKind.DockerWsl && shutdownWsl))
             .Sum(d => d.Bytes);
 
         return new GamingPlan(
@@ -90,6 +105,17 @@ public static class SwitchPlanner
     {
         var running = runningNow.Where(d => d.Roots.Count > 0).Select(d => d.Entry.Id).ToHashSet();
         return session.Closed.Where(c => !running.Contains(c.EntryId)).ToList();
+    }
+
+    /// <summary>
+    /// A windowed program installed outside the target app's folder is a separate app the target merely
+    /// launched (a browser opened from a link), not part of the target.
+    /// </summary>
+    public static bool IsSeparateApp(string? processPath, string? rootPath, bool hasVisibleWindow)
+    {
+        if (!hasVisibleWindow || processPath is null || rootPath is null) return false;
+        var rootDir = Path.GetDirectoryName(rootPath);
+        return rootDir is null || !processPath.StartsWith(rootDir.TrimEnd('\\') + @"\", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsWslVm(ProcInfo p) => p.Name.Equals(WslVm, StringComparison.OrdinalIgnoreCase);

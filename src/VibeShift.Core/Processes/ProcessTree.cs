@@ -6,8 +6,11 @@ namespace VibeShift.Core.Processes;
 /// </summary>
 public static class ProcessTree
 {
-    /// <summary>The root and everything under it, children before parents, each process once.</summary>
-    public static IReadOnlyList<ProcInfo> Descendants(IReadOnlyList<ProcInfo> all, int rootPid)
+    /// <summary>
+    /// The root and everything under it, children before parents, each process once.
+    /// A non-root process for which <paramref name="skip"/> is true is left out together with everything under it.
+    /// </summary>
+    public static IReadOnlyList<ProcInfo> Descendants(IReadOnlyList<ProcInfo> all, int rootPid, Func<ProcInfo, bool>? skip = null)
     {
         var root = all.FirstOrDefault(p => p.Pid == rootPid);
         if (root is null) return [];
@@ -21,7 +24,8 @@ public static class ProcessTree
         {
             if (!seen.Add(p.Pid)) return;
             if (children.TryGetValue(p.Pid, out var kids))
-                foreach (var k in kids) Visit(k);
+                foreach (var k in kids)
+                    if (skip is null || !skip(k)) Visit(k);
             result.Add(p);
         }
     }
