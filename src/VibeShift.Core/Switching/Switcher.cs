@@ -47,6 +47,8 @@ public sealed class Switcher(JsonStore store)
         {
             foreach (var root in target.ReopenRoots)
             {
+                // A browser only running in the background (Edge startup boost) had no window to bring back.
+                if (ProcessQuery.GetCommandLine(root.Pid)?.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase) == true) continue;
                 var exe = ProcessQuery.GetImagePath(root.Pid) is { } path ? ReopenTarget.PreferStub(path, File.Exists) : null;
                 var app = new ClosedApp(target.Entry.Id, target.Entry.Name, exe, ProcessQuery.GetAumid(root.Pid));
                 if ((app.ExePath ?? app.Aumid) is not null && !session.Closed.Contains(app)) session.Closed.Add(app);
@@ -63,7 +65,7 @@ public sealed class Switcher(JsonStore store)
         {
             int n = plan.Close.Count;
             progress?.Report($"Closing {n} app{(n == 1 ? "" : "s")}...");
-            if (plan.PoliteClose) PoliteClose(plan.Close.SelectMany(t => t.Roots), s.ForceCloseSeconds);
+            if (plan.PoliteCloseRoots.Count > 0) PoliteClose(plan.PoliteCloseRoots, s.ForceCloseSeconds);
             foreach (var info in targets) Kill(info);
         }
 

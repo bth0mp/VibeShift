@@ -58,6 +58,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<AppRow> AllRows { get; } = [];
     public ObservableCollection<string> MyGames { get; }
 
+    /// <summary>Apps page: other apps using the most RAM right now, one click from the close list.</summary>
+    public ObservableCollection<SuggestionRow> Suggestions { get; } = [];
+
+    public bool HasSuggestions => Suggestions.Count > 0;
+
+    /// <summary>Game library folders (from the App's game watcher), so games are never suggested.</summary>
+    public IReadOnlyList<string> GameRoots { get; set; } = [];
+
     /// <summary>Raised after any settings save (the game watcher rebuilds on it).</summary>
     public event Action? SettingsChanged;
 
@@ -234,17 +242,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
             int mySession = MySessionId;
             var snapshot = Settings.Clone(); // the UI may edit Settings while this runs
             var entries = Switcher.Entries(snapshot);
-            var (detected, avail, estimated) = await Task.Run(() =>
+            var roots = GameRoots;
+            var (detected, avail, estimated, suggestions) = await Task.Run(() =>
             {
                 var all = ProcessSnapshot.Take();
+                var none = new HashSet<int>();
                 // Same block rules as a real switch, so the numbers shown match what would happen.
                 var det = SwitchPlanner.Detect(all, entries, ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
-                    p => p.SessionId != mySession || BlockList.IsBlocked(p.Name, ProcessQuery.GetImagePath(p.Pid), p.Pid, self, new HashSet<int>()));
+                    p => p.SessionId != mySession || BlockList.IsBlocked(p.Name, ProcessQuery.GetImagePath(p.Pid), p.Pid, self, none));
                 // The estimate only sums RAM, so it skips the (costly) per-process spare checks.
                 long est = SwitchPlanner.PlanGaming(all, det, snapshot, automatic: false, self, (_, _) => false).EstimatedBytes;
-                return (det, ProcessQuery.AvailableRamBytes(), est);
+                // Never offer Windows, VibeShift, other users' apps, games or the launchers games depend on.
+                var offers = SwitchPlanner.SuggestApps(all, det, ProcessQuery.GetImagePath, (p, path) =>
+                        p.SessionId != mySession
+                        || BlockList.IsBlocked(p.Name, path, p.Pid, self, none)
+                        || GameRules.IsGameLauncher(p.Name)
+                        || GameRules.IsCandidate(path, roots)
+                        || GameRules.IsMyGame(path, snapshot.MyGames)
+                        || string.Equals(path, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+                    .Select(s => new SuggestionRow(s.Path, AppCatalog.Custom(s.Path).Name, Format.Bytes(s.Bytes)))
+                    .ToList();
+                return (det, ProcessQuery.AvailableRamBytes(), est, offers);
             });
             Apply(entries, detected, avail, estimated);
+            SyncSuggestions(suggestions);
         }
         catch (Exception e)
         {
@@ -376,9 +397,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         Sync(HomeRows, list);
         Sync(AllRows, list);
+        SyncSuggestions([new(@"C:\Spotify\Spotify.exe", "Spotify", "412 MB"), new(@"C:\OBS\obs64.exe", "OBS Studio", "386 MB")]);
         FreeRamText = IsGaming ? "11.4 GB" : "8.2 GB";
         AppsText = IsGaming ? "0 open" : "4 open";
         ThirdValue = "3.2 GB";
+    }
+
+    private void SyncSuggestions(IReadOnlyList<SuggestionRow> wanted)
+    {
+        if (Suggestions.Select(s => (s.Path, s.RamText)).SequenceEqual(wanted.Select(s => (s.Path, s.RamText)))) return;
+        Suggestions.Clear();
+        foreach (var s in wanted) Suggestions.Add(s);
+        Raise(nameof(HasSuggestions));
     }
 
     private AppRow Row(CatalogEntry e)

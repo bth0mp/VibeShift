@@ -15,9 +15,9 @@
         <!-- Icon rail -->
         <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
             <StackPanel HorizontalAlignment="Center" Margin="0,14,0,0">
-                <RadioButton x:Name="HomeTab" Style="{StaticResource RailButton}" GroupName="Rail" IsChecked="True" Content="&#xE80F;" ToolTip="Home" />
-                <RadioButton x:Name="AppsTab" Style="{StaticResource RailButton}" GroupName="Rail" Content="&#xE71D;" ToolTip="Apps" />
-                <RadioButton x:Name="SettingsTab" Style="{StaticResource RailButton}" GroupName="Rail" Content="&#xE713;" ToolTip="Settings" />
+                <RadioButton x:Name="HomeTab" Style="{StaticResource RailButton}" GroupName="Rail" IsChecked="True" Content="&#xE80F;" ToolTip="Home" AutomationProperties.Name="Home" />
+                <RadioButton x:Name="AppsTab" Style="{StaticResource RailButton}" GroupName="Rail" Content="&#xE71D;" ToolTip="Apps" AutomationProperties.Name="Apps" />
+                <RadioButton x:Name="SettingsTab" Style="{StaticResource RailButton}" GroupName="Rail" Content="&#xE713;" ToolTip="Settings" AutomationProperties.Name="Settings" />
             </StackPanel>
         </Border>
 
@@ -104,30 +104,50 @@
         </Grid>
 
         <!-- Apps -->
-        <Grid Grid.Column="1" Margin="18,16,18,18"
-              Visibility="{Binding IsChecked, ElementName=AppsTab, Converter={StaticResource Visible}}">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-            <TextBlock Text="Apps" FontSize="18" FontWeight="SemiBold" />
-            <TextBlock Grid.Row="1" Style="{StaticResource Hint}" FontSize="12" Margin="0,6,0,16"
-                       Text="Switch on what Gaming mode should close. An app shows up here once VibeShift has seen it running, or when you add it yourself." />
-            <DockPanel Grid.Row="2" Margin="0,0,0,7">
-                <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add app" Click="AddApp_Click" />
-                <TextBlock Style="{StaticResource Label}" Text="YOUR APPS" />
-            </DockPanel>
-            <TextBlock Grid.Row="3" Text="{Binding AppsMessage}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" Margin="0,0,0,8"
-                       Visibility="{Binding HasAppsMessage, Converter={StaticResource Visible}}" />
-            <Border Grid.Row="4" Style="{StaticResource Card}" VerticalAlignment="Top">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                      Visibility="{Binding IsChecked, ElementName=AppsTab, Converter={StaticResource Visible}}">
+            <StackPanel Margin="18,16,18,18">
+                <TextBlock Text="Apps" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Style="{StaticResource Hint}" FontSize="12" Margin="0,6,0,16"
+                           Text="Switch on what Gaming mode should close. An app shows up here once VibeShift has seen it running, or when you add it yourself." />
+                <DockPanel Margin="0,0,0,7">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add app" Click="AddApp_Click" />
+                    <TextBlock Style="{StaticResource Label}" Text="YOUR APPS" />
+                </DockPanel>
+                <TextBlock Text="{Binding AppsMessage}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" Margin="0,0,0,8"
+                           Visibility="{Binding HasAppsMessage, Converter={StaticResource Visible}}" />
+                <Border Style="{StaticResource Card}">
                     <ItemsControl ItemsSource="{Binding AllRows}" Margin="0,-1,0,0" ItemTemplate="{DynamicResource AppsRowTemplate}" />
-                </ScrollViewer>
-            </Border>
-        </Grid>
+                </Border>
+
+                <StackPanel Visibility="{Binding HasSuggestions, Converter={StaticResource Visible}}">
+                    <TextBlock Style="{StaticResource Label}" Text="USING THE MOST RAM" Margin="0,20,0,4" />
+                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                               Text="Other apps using a lot of memory right now. Add one and Gaming mode will close it too." />
+                    <Border Style="{StaticResource Card}">
+                        <ItemsControl ItemsSource="{Binding Suggestions}" Margin="0,-1,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,9" ToolTip="{Binding Path}">
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add" Click="AddSuggestion_Click"
+                                                    VerticalAlignment="Center" AutomationProperties.Name="{Binding Name, StringFormat='Add {0}'}" />
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding RamText}" Foreground="{DynamicResource MutedBrush}"
+                                                       VerticalAlignment="Center" Margin="0,0,12,0" />
+                                            <Border Width="22" Height="22" CornerRadius="6" Background="{Binding BadgeBrush}" Opacity="0.75">
+                                                <TextBlock Text="{Binding BadgeLetter}" Foreground="White" FontSize="11" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <TextBlock Text="{Binding Name}" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- Settings -->
         <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"

@@ -143,6 +143,7 @@ public partial class App : Application
         {
             var games = vm!.Settings.MyGames.ToList();
             var roots = await Task.Run(GameLibraries.Discover);
+            vm.GameRoots = roots;
             using var me = Process.GetCurrentProcess();
             watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, ProcessQuery.HasVisibleWindow, me.SessionId);
         }

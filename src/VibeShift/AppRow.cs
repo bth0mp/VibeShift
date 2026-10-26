@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using VibeShift.Core.Catalog;
@@ -30,11 +31,19 @@ public sealed class AppRow : INotifyPropertyChanged
     public CatalogEntry Entry { get; }
     public string Id => Entry.Id;
     public string Name => Entry.Name;
-    public string BadgeLetter => Entry.Name[..1].ToUpperInvariant();
+    public string BadgeLetter => Initial(Entry.Name);
+
+    /// <summary>First letter or digit, so a product named ".NET" gets "N", not ".".</summary>
+    public static string Initial(string name) =>
+        name.FirstOrDefault(char.IsLetterOrDigit) is var c and not '\0' ? char.ToUpperInvariant(c).ToString() : "?";
     public string BadgeColor => Entry.Color;
     public Brush BadgeBrush { get; }
     public bool IsCustom => Entry.Kind == EntryKind.Custom;
-    public string? Tooltip => Entry.Kind == EntryKind.Mcp ? McpTooltip : null;
+    public const string BrowsersTooltip =
+        "Closes your browser and restores its tabs when you switch back. To keep a music tab playing instead, leave this off " +
+        "and let the browser sleep idle tabs: Firefox does it on its own, Chrome has Memory Saver, Edge has Sleeping tabs.";
+
+    public string? Tooltip => Entry.Kind == EntryKind.Mcp ? McpTooltip : Entry.Id == "browsers" ? BrowsersTooltip : null;
 
     /// <summary>Set by the user; saves through the callback.</summary>
     public bool IsOn

@@ -55,9 +55,15 @@ Closing the window keeps VibeShift running as a small icon by the clock. Right-c
 | VS Code | No | Yes |
 | Docker / WSL | No | Docker Desktop yes. WSL starts again by itself the next time something uses it |
 | Command-line AI agents (Claude Code, Codex CLI, Gemini CLI, including npm installs) | No | No. Closing one ends what it was doing, and it can't be reopened inside your terminal |
+| Web browsers (Firefox, Chrome, Edge, Brave, Opera, Vivaldi) | No | Yes, with your tabs (see below) |
+| Wallpaper Engine | No | Yes |
+| PowerToys | No | Yes |
+| Windows Widgets | No | Windows starts them again when needed |
 
 - **When apps show up.** An app appears in VibeShift once it has seen it running. Use **+ Add app** to add any other program.
 - **MCP servers.** VibeShift spots these by their command line (`mcp`, `modelcontextprotocol`, `desktop-commander`). Other Node or Python processes, such as language servers, dev servers and your own scripts, are left alone. With the MCP row switched on, every MCP server stops, including ones used by apps you keep open. Those apps get their tools back when they restart.
+- **Using the most RAM.** The Apps page lists other apps using a lot of memory right now, each with an **+ Add** button. Windows itself, games and game launchers like Steam are never listed.
+- **Browsers and your tabs.** The Web browsers row ends the browser rather than asking it to close, because that's what makes it restore every tab when it reopens. Want to keep a music tab playing while you game? Leave this row off and let the browser sleep idle tabs instead: Firefox does this on its own when memory runs low, Chrome has **Memory Saver**, Edge has **Sleeping tabs**, and the free **Auto Tab Discard** extension lets you choose exactly what stays awake.
 - **What it never closes.** Windows' own processes, the game you're playing (or anything it started), and VibeShift itself.
 - **Separate apps stay open.** A browser opened from a link in Claude, or an app whose row you switched off, survives even if a closed app started it.
 - **Started VibeShift from an app's terminal?** Then that app is left running, since VibeShift can't close part of it and reopen it afterwards.

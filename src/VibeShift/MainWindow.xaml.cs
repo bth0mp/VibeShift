@@ -27,6 +27,11 @@ public partial class MainWindow : Window
         if (PickExe("Add an app for Gaming mode to close") is { } path) vm.AddApp(path);
     }
 
+    private void AddSuggestion_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is SuggestionRow row) vm.AddApp(row.Path);
+    }
+
     private void RemoveApp_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is AppRow row) vm.RemoveApp(row);

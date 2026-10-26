@@ -19,6 +19,16 @@ public static class GameRules
     private static Regex[] Wildcards(params string[] patterns) =>
         patterns.Select(p => new Regex("^" + Regex.Escape(p).Replace(@"\*", ".*") + "$", RegexOptions.IgnoreCase)).ToArray();
 
+    private static readonly HashSet<string> Launchers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "steam", "steamwebhelper", "steamservice", "EpicGamesLauncher", "EpicWebHelper", "Battle.net", "Agent",
+        "EADesktop", "EABackgroundService", "EALocalHostSvc", "GalaxyClient", "GalaxyClient Helper", "RiotClientServices",
+        "RiotClientUx", "upc", "UbisoftConnect", "XboxPcApp", "XboxPcAppFT", "gamingservices",
+    };
+
+    /// <summary>Game stores and their helpers: closing one can take the running game down with it.</summary>
+    public static bool IsGameLauncher(string processName) => Launchers.Contains(processName);
+
     public static bool IsGame(string imagePath, IReadOnlyList<string> roots, IReadOnlyList<string> myGames, bool hasVisibleWindow) =>
         IsMyGame(imagePath, myGames) || (IsCandidate(imagePath, roots) && hasVisibleWindow);
 
