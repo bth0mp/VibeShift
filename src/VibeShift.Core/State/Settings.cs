@@ -25,6 +25,15 @@ public sealed class Settings
     public bool StartWithWindows { get; set; }
     public bool ExtraBoost { get; set; }
     public int ForceCloseSeconds { get; set; } = 5;
+
+    /// <summary>Switch back to vibe coding once the game closes, even when gaming was started by hand.</summary>
+    public bool ReturnWhenGameCloses { get; set; } = true;
+
+    /// <summary>Entry ids opened every time you switch back, whether or not they were closed for gaming.</summary>
+    public List<string> VibeApps { get; set; } = [];
+
+    /// <summary>How to start each app VibeShift has seen running (exe path or Store AUMID), so vibe apps can be opened.</summary>
+    public Dictionary<string, ClosedApp> LaunchTargets { get; set; } = [];
     public List<string> BoostServices { get; set; } = ["SysMain", "WSearch"];
 
     public bool IsOn(CatalogEntry e) => Toggles.TryGetValue(e.Id, out var on) ? on : e.DefaultOn;
@@ -32,7 +41,8 @@ public sealed class Settings
     /// <summary>Drops null list entries from a hand-edited file and upgrades older files' choices.</summary>
     internal void Normalize()
     {
-        foreach (var list in new[] { KnownApps, CustomApps, MyGames, BoostServices }) list.RemoveAll(x => x is null);
+        foreach (var list in new[] { KnownApps, CustomApps, MyGames, BoostServices, VibeApps }) list.RemoveAll(x => x is null);
+        foreach (var bad in LaunchTargets.Where(kv => kv.Value is null).Select(kv => kv.Key).ToList()) LaunchTargets.Remove(bad);
         // 1.0.0 covered the Microsoft 365 Copilot app under the Copilot toggle; keep the user's choice for it.
         if (SchemaVersion < 2 && Toggles.TryGetValue("copilot", out var on) && !Toggles.ContainsKey("m365copilot"))
             Toggles["m365copilot"] = on;

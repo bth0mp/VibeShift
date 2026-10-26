@@ -48,6 +48,26 @@ public class AutoModeTrackerTests
         Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddSeconds(11)));
     }
 
+    [Fact] // 1.2: "Switch back when my game closes" also works after clicking Start gaming yourself
+    public void Manual_gaming_returns_after_the_game_closes_when_enabled()
+    {
+        T.ManualSwitch(Mode.Gaming, None, returnWhenGameCloses: true);
+        Assert.Equal(AutoAction.None, T.Update(new[] { 7 }, Mode.Gaming, t0));
+        Assert.Equal(AutoAction.None, T.Update(None, Mode.Gaming, t0.AddSeconds(10)));
+        Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddSeconds(11)));
+    }
+
+    [Fact] // 1.2: with no game ever seen there's nothing to wait for, so it never switches back by itself
+    public void Manual_gaming_without_a_game_never_returns()
+    {
+        T.ManualSwitch(Mode.Gaming, None, returnWhenGameCloses: true);
+        Assert.Equal(AutoAction.None, T.Update(None, Mode.Gaming, t0.AddMinutes(5)));
+    }
+
+    [Fact] // 1.2: watching for the game to close must not start gaming when Auto mode is off
+    public void Game_start_is_ignored_when_auto_start_is_off() =>
+        Assert.Equal(AutoAction.None, T.Update(new[] { 7 }, Mode.Coding, t0, autoStart: false));
+
     [Fact]
     public void Manual_gaming_never_auto_returns()
     {

@@ -263,6 +263,40 @@ public class SwitchPlannerTests
         Assert.Equal(new[] { (@"C:\Spotify\Spotify.exe", 5_000L), (@"C:\Blender\blender.exe", 4_000L) }, s.Select(x => (x.Path, x.Bytes)));
     }
 
+    [Fact] // 1.2 vibe apps: opened on the way back even if they weren't closed for gaming
+    public void Vibe_apps_open_even_if_they_were_not_closed()
+    {
+        var session = new SessionState { Closed = { new("cursor", "Cursor", @"C:\c\Cursor.exe", null) } };
+        var known = new Dictionary<string, ClosedApp>
+        {
+            ["claude-desktop"] = new("claude-desktop", "Claude", null, "Claude_pzs8sxrjxfjjc!Claude"),
+            ["chatgpt"] = new("chatgpt", "ChatGPT", null, "OpenAI.ChatGPT_x!App"),
+        };
+        var running = Detect(new[] { P(1, 0, "ChatGPT") }); // already open: not launched twice
+        var plan = SwitchPlanner.PlanVibeLaunch(session, running, new[] { "claude-desktop", "chatgpt" }, known);
+        Assert.Equal(new[] { "cursor", "claude-desktop" }, plan.Select(a => a.EntryId));
+    }
+
+    [Fact] // 1.2: an app never seen running has no launcher on record yet, so it can't be opened
+    public void Vibe_app_without_a_known_launcher_is_skipped() =>
+        Assert.Empty(SwitchPlanner.PlanVibeLaunch(new SessionState(), [], new[] { "cursor" }, new Dictionary<string, ClosedApp>()));
+
+    [Fact] // 1.2: an app closed for gaming and also a vibe app is opened once
+    public void Closed_vibe_app_is_opened_once()
+    {
+        var session = new SessionState { Closed = { new("cursor", "Cursor", @"C:\c\Cursor.exe", null) } };
+        var known = new Dictionary<string, ClosedApp> { ["cursor"] = new("cursor", "Cursor", @"C:\c\Cursor.exe", null) };
+        Assert.Single(SwitchPlanner.PlanVibeLaunch(session, [], new[] { "cursor" }, known));
+    }
+
+    [Fact] // 1.2: custom apps can always be launched from their own path
+    public void Custom_apps_have_a_launch_target_from_their_path()
+    {
+        var s = new Settings { CustomApps = { @"C:\Tools\thing.exe" } };
+        var target = Switcher.LaunchTargets(s)[AppCatalog.Custom(@"C:\Tools\thing.exe").Id];
+        Assert.Equal(@"C:\Tools\thing.exe", target.ExePath);
+    }
+
     [Fact] // M12d: case-variant custom paths are one app, not a crash
     public void Custom_paths_differing_only_in_case_are_one_entry()
     {

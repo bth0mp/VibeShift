@@ -96,11 +96,7 @@ public static class SwitchPlanner
                 .Distinct()
                 .ToList();
             // Reopen the launcher exe, even when it runs under one of its own helpers (Docker Desktop under its backend).
-            var launchers = d.Entry.Launchers ?? d.Entry.ProcessNames.Take(1).ToArray();
-            var reopen = d.Entry.Reopen
-                ? ProcessTree.Roots(all, d.Matched.Where(m => launchers.Contains(m.Name, StringComparer.OrdinalIgnoreCase)).ToList())
-                : [];
-            close.Add(new CloseTarget(d.Entry, d.Roots, kill, reopen));
+            close.Add(new CloseTarget(d.Entry, d.Roots, kill, LauncherRoots(all, d)));
         }
 
         var vm = WslVm(all);
@@ -165,6 +161,32 @@ public static class SwitchPlanner
             .Take(max)
             .Select(v => new Suggestion(v.Path, v.Bytes, v.Count))
             .ToList();
+    }
+
+    /// <summary>
+    /// Everything to open when switching back: what was closed for gaming (in closing order), then the user's
+    /// vibe apps that aren't open yet and have a known launcher. Nothing already running is opened twice.
+    /// </summary>
+    public static IReadOnlyList<ClosedApp> PlanVibeLaunch(
+        SessionState session,
+        IReadOnlyList<Detected> runningNow,
+        IReadOnlyCollection<string> vibeApps,
+        IReadOnlyDictionary<string, ClosedApp> known)
+    {
+        var running = runningNow.Where(d => d.Roots.Count > 0).Select(d => d.Entry.Id).ToHashSet();
+        var plan = session.Closed.Where(c => !running.Contains(c.EntryId)).ToList();
+        foreach (var id in vibeApps)
+            if (!running.Contains(id) && plan.All(c => c.EntryId != id) && known.TryGetValue(id, out var target))
+                plan.Add(target);
+        return plan;
+    }
+
+    /// <summary>The processes to relaunch an app by: its launcher exes, topmost first (see CatalogEntry.Launchers).</summary>
+    public static IReadOnlyList<ProcInfo> LauncherRoots(IReadOnlyList<ProcInfo> all, Detected d)
+    {
+        if (!d.Entry.Reopen) return [];
+        var launchers = d.Entry.Launchers ?? d.Entry.ProcessNames.Take(1).ToArray();
+        return ProcessTree.Roots(all, d.Matched.Where(m => launchers.Contains(m.Name, StringComparer.OrdinalIgnoreCase)).ToList());
     }
 
     /// <summary>What to reopen, in closing order, minus apps that are already running again.</summary>

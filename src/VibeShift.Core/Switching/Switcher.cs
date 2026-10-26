@@ -16,6 +16,18 @@ public sealed class Switcher(JsonStore store)
     public static IReadOnlyList<CatalogEntry> Entries(Settings s) =>
         s.CustomApps.Select(AppCatalog.Custom).Concat(AppCatalog.BuiltIn).DistinctBy(e => e.Id).ToList();
 
+    /// <summary>How to start every app the user could pick as a vibe app: recorded launchers, plus custom apps' own paths.</summary>
+    public static IReadOnlyDictionary<string, ClosedApp> LaunchTargets(Settings s)
+    {
+        var targets = new Dictionary<string, ClosedApp>(s.LaunchTargets);
+        foreach (var path in s.CustomApps)
+        {
+            var e = AppCatalog.Custom(path);
+            targets[e.Id] = new ClosedApp(e.Id, e.Name, path, null);
+        }
+        return targets;
+    }
+
     public Task<SessionState> StartGamingAsync(Settings s, bool automatic, IReadOnlyCollection<int> gamePids, IProgress<string>? progress) =>
         Task.Run(() => StartGaming(s, automatic, gamePids, progress));
 

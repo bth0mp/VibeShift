@@ -106,6 +106,21 @@ public sealed class StateTests : IDisposable
         Assert.Equal(new[] { "mcp" }, session.ClosedEntryIds);
     }
 
+    [Fact] // 1.2: new settings default sensibly and survive a save
+    public void Vibe_settings_default_and_round_trip()
+    {
+        var s = Store().LoadSettings();
+        Assert.True(s.ReturnWhenGameCloses);
+        Assert.Empty(s.VibeApps);
+        Assert.Empty(s.LaunchTargets);
+        s.VibeApps.Add("chatgpt");
+        s.LaunchTargets["chatgpt"] = new ClosedApp("chatgpt", "ChatGPT", null, "OpenAI.ChatGPT_x!App");
+        Store().SaveSettings(s);
+        var r = Store().LoadSettings();
+        Assert.Equal(new[] { "chatgpt" }, r.VibeApps);
+        Assert.Equal("OpenAI.ChatGPT_x!App", r.LaunchTargets["chatgpt"].Aumid);
+    }
+
     [Fact] // M3: background work reads a snapshot, not the live object the UI edits
     public void Clone_is_independent()
     {
