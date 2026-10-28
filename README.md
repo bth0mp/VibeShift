@@ -38,6 +38,13 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 - Microsoft Store apps (like Claude and ChatGPT) reopen through Windows, the same way the Start menu opens them.
 - If VibeShift crashes or your PC restarts in the middle of a game, it opens in gaming mode next time, so **Back to vibe coding** still knows what to reopen.
 
+**Vibe page (quick on/off)**
+
+- The ⚡ page lists your AI apps (Claude, ChatGPT, Cursor, Windsurf, Copilot, Ollama, LM Studio, plus anything you add) with a live switch each: on opens the app right now, off closes it right now. **Open all** and **Close all** do the whole list at once.
+- It doesn't switch modes or touch MCP servers, WSL or services; it's for quickly starting or stopping your tools while you work.
+- The same controls are in the tray's right-click menu: **Open all AI apps**, **Close all AI apps**, and an **AI apps** submenu where a ✓ means running. Click an app to open or close it, without opening the window.
+- VibeShift learns how to start an app the first time it sees it running, so an app shows up on the Vibe page once you've opened it once (or added it yourself).
+
 Closing the window keeps VibeShift running as a small icon by the clock, with a green dot in vibe coding mode and a purple one while gaming. Right-click it to switch modes or quit. Windows 11 tucks new icons under the **^** arrow; drag it onto the taskbar to keep it in sight, and turn on **Start with Windows** in Settings so it's always there.
 
 ## What it can close

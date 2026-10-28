@@ -12,6 +12,7 @@
     <SolidColorBrush x:Key="HighlightBrush" Color="#c084fc" />
     <SolidColorBrush x:Key="ToggleOffBrush" Color="#3a3550" />
     <SolidColorBrush x:Key="CodingDotBrush" Color="#34d399" />
+    <SolidColorBrush x:Key="RunningTextBrush" Color="#34d399" />
     <SolidColorBrush x:Key="GamingDotBrush" Color="#a855f7" />
     <LinearGradientBrush x:Key="ButtonGradientBrush" StartPoint="0,0" EndPoint="1,1">
         <GradientStop Color="#7c3aed" Offset="0" />

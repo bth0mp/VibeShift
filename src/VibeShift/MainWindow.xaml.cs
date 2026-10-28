@@ -19,7 +19,14 @@ public partial class MainWindow : Window
     }
 
     public void ShowPage(string page) =>
-        (page switch { "apps" => AppsTab, "settings" => SettingsTab, _ => HomeTab }).IsChecked = true;
+        (page switch { "vibe" => VibeTab, "apps" => AppsTab, "settings" => SettingsTab, _ => HomeTab }).IsChecked = true;
+
+    private void AddVibeApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (PickExe("Add an app to your Vibe page") is not { } path) return;
+        vm.AddApp(path);
+        if (vm.HasAppsMessage) AppsTab.IsChecked = true; // the reason it wasn't added is shown there
+    }
 
     private void AddApp_Click(object sender, RoutedEventArgs e)
     {

@@ -21,6 +21,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly JsonStore store;
     private readonly Switcher switcher;
     private readonly Dictionary<string, AppRow> rows = [];
+    private readonly Dictionary<string, VibeAppRow> vibeRows = [];
+    private bool vibeBusy;
     private readonly HashSet<string> failedReopen = [];
     private readonly bool demo;
     private SessionState? session;
@@ -37,6 +39,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         session = demo ? null : store.LoadSession();
         mode = session is null ? Mode.Coding : Mode.Gaming;
         PrimaryCommand = new RelayCommand(() => ToggleModeAsync(automatic: false));
+        OpenAllCommand = new RelayCommand(OpenAllAsync);
+        CloseAllCommand = new RelayCommand(CloseAllAsync);
         MyGames = new ObservableCollection<string>(settings.MyGames);
     }
 
@@ -57,6 +61,124 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<AppRow> HomeRows { get; } = [];
     public ObservableCollection<AppRow> AllRows { get; } = [];
     public ObservableCollection<string> MyGames { get; }
+
+    // ----- Vibe page: live on/off for AI apps -----
+
+    public ObservableCollection<VibeAppRow> VibeRows { get; } = [];
+    public bool HasVibeRows => VibeRows.Count > 0;
+    public ICommand OpenAllCommand { get; }
+    public ICommand CloseAllCommand { get; }
+
+    /// <summary>Open all / Close all are available (not mid-action, not mid-switch).</summary>
+    public bool CanVibeAct => !vibeBusy && !IsBusy;
+
+    public async Task OpenAllAsync()
+    {
+        await RefreshAsync();
+        await RunVibeAsync(VibeRows.Where(r => !r.IsOpen && !r.IsBusy).ToList(), open: true);
+    }
+
+    public async Task CloseAllAsync()
+    {
+        await RefreshAsync();
+        await RunVibeAsync(VibeRows.Where(r => r.IsOpen && !r.IsBusy).ToList(), open: false);
+    }
+
+    /// <summary>For the tray's AI apps menu: the apps and whether each is running, checked right now.</summary>
+    public IReadOnlyList<(string Id, string Name, bool Running)> VibeAppsNow()
+    {
+        var entries = Switcher.Entries(Settings);
+        var detected = SwitchPlanner.Detect(ProcessSnapshot.Take(), entries, ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
+            p => p.SessionId != MySessionId);
+        var running = detected.Where(d => d.Roots.Count > 0).Select(d => d.Entry.Id).ToHashSet();
+        var launchable = Switcher.LaunchTargets(Settings);
+        return entries.Where(e => AppCatalog.IsAiApp(e) && (running.Contains(e.Id) || launchable.ContainsKey(e.Id)))
+            .Select(e => (e.Id, e.Name, running.Contains(e.Id)))
+            .ToList();
+    }
+
+    public async Task SetVibeAppAsync(string id, bool open)
+    {
+        await RefreshAsync();
+        if (VibeRows.FirstOrDefault(r => r.Id == id) is { IsBusy: false } row) await RunVibeAsync([row], open);
+    }
+
+    private async void OnVibeSwitch(VibeAppRow row, bool open)
+    {
+        if (vibeBusy || IsBusy)
+        {
+            row.SetIsOpenSilently(!open); // one thing at a time
+            return;
+        }
+        await RunVibeAsync([row], open);
+    }
+
+    private async Task RunVibeAsync(IReadOnlyList<VibeAppRow> targets, bool open)
+    {
+        if (targets.Count == 0 || vibeBusy || IsBusy || demo) return;
+        SetVibeBusy(true);
+        foreach (var r in targets)
+        {
+            r.IsBusy = true;
+            r.Status = open ? "opening..." : "closing...";
+            r.SetIsOpenSilently(open);
+        }
+        try
+        {
+            var ids = targets.Select(r => r.Id).ToList();
+            if (open)
+            {
+                var result = await switcher.OpenAppsAsync(Settings.Clone(), ids);
+                foreach (var r in targets.Where(r => result.Failed.Contains(r.Name)))
+                {
+                    r.Status = "couldn't open";
+                    r.SetIsOpenSilently(false);
+                }
+            }
+            else
+            {
+                await switcher.CloseAppsAsync(Settings.Clone(), ids, CurrentGamePids);
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Write("Vibe page action failed: " + e.Message);
+        }
+        finally
+        {
+            foreach (var r in targets) r.IsBusy = false;
+            SetVibeBusy(false);
+        }
+        await RefreshAsync();
+    }
+
+    private void SetVibeBusy(bool busy)
+    {
+        vibeBusy = busy;
+        Raise(nameof(CanVibeAct));
+    }
+
+    private void ApplyVibe(IReadOnlyList<CatalogEntry> entries, IReadOnlyList<Detected> detected)
+    {
+        var running = detected.Where(d => d.Roots.Count > 0).ToDictionary(d => d.Entry.Id);
+        var launchable = Switcher.LaunchTargets(Settings);
+        var wanted = new List<VibeAppRow>();
+        foreach (var e in entries.Where(AppCatalog.IsAiApp))
+        {
+            bool isRunning = running.TryGetValue(e.Id, out var d);
+            if (!isRunning && !launchable.ContainsKey(e.Id)) continue; // can't be opened until seen running once
+            if (!vibeRows.TryGetValue(e.Id, out var row)) vibeRows[e.Id] = row = new VibeAppRow(e, OnVibeSwitch);
+            if (!row.IsBusy)
+            {
+                row.SetIsOpenSilently(isRunning);
+                row.Status = isRunning ? "running · " + Format.Bytes(d!.Bytes)
+                    : row.Status == "couldn't open" ? row.Status : "closed";
+            }
+            wanted.Add(row);
+        }
+        Sync(VibeRows, wanted);
+        Raise(nameof(HasVibeRows));
+    }
 
     /// <summary>Apps page: other apps using the most RAM right now, one click from the close list.</summary>
     public ObservableCollection<SuggestionRow> Suggestions { get; } = [];
@@ -222,7 +344,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => isBusy;
         private set
         {
-            if (Set(ref isBusy, value)) { Raise(nameof(IsIdle)); Raise(nameof(PrimaryText)); }
+            if (Set(ref isBusy, value)) { Raise(nameof(IsIdle)); Raise(nameof(PrimaryText)); Raise(nameof(CanVibeAct)); }
         }
     }
 
@@ -288,6 +410,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             });
             RecordLaunchTargets(suggestions.seen);
             Apply(entries, detected, avail, estimated);
+            ApplyVibe(entries, detected);
             SyncSuggestions(suggestions.offers);
         }
         catch (Exception e)
@@ -298,7 +421,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task ToggleModeAsync(bool automatic)
     {
-        if (IsBusy || demo) return;
+        if (IsBusy || vibeBusy || demo) return;
         IsBusy = true;
         var progress = new Progress<string>(t => BusyText = t);
         try
@@ -454,6 +577,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Sync(HomeRows, list);
         Sync(AllRows, list);
         SyncSuggestions([new(@"C:\Spotify\Spotify.exe", "Spotify", "412 MB"), new(@"C:\OBS\obs64.exe", "OBS Studio", "386 MB")]);
+        var vibeSample = new (string Id, string Status)[]
+        {
+            ("claude-desktop", "running \u00b7 1.1 GB"), ("chatgpt", "running \u00b7 640 MB"), ("cursor", "closed"), ("ollama", "closed"), ("lmstudio", "closed"),
+        };
+        var vibeList = new List<VibeAppRow>();
+        foreach (var (id, status) in vibeSample)
+        {
+            var row = new VibeAppRow(AppCatalog.BuiltIn.Single(e => e.Id == id), (_, _) => { });
+            row.SetIsOpenSilently(status != "closed");
+            row.Status = status;
+            vibeList.Add(row);
+        }
+        Sync(VibeRows, vibeList);
+        Raise(nameof(HasVibeRows));
         FreeRamText = IsGaming ? "11.4 GB" : "8.2 GB";
         AppsText = IsGaming ? "0 open" : "4 open";
         ThirdValue = "3.2 GB";
@@ -473,7 +610,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return row;
     }
 
-    private static void Sync(ObservableCollection<AppRow> target, List<AppRow> wanted)
+    private static void Sync<T>(ObservableCollection<T> target, List<T> wanted)
     {
         if (target.SequenceEqual(wanted)) return;
         target.Clear();

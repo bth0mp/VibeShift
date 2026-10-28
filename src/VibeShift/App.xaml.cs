@@ -88,7 +88,8 @@ public partial class App : Application
             window.Hide();
             Dispatcher.BeginInvoke(TrimMemory, DispatcherPriority.ApplicationIdle);
         };
-        tray = new Tray(ShowWindow, () => vm.ToggleModeAsync(automatic: false), Quit);
+        tray = new Tray(ShowWindow, () => vm.ToggleModeAsync(automatic: false), Quit,
+            vm.OpenAllAsync, vm.CloseAllAsync, vm.VibeAppsNow, vm.SetVibeAppAsync);
         tray.Update(vm.Mode);
         vm.Switched += (mode, automatic) =>
         {

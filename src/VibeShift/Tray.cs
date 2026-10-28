@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
@@ -18,11 +19,36 @@ public sealed class Tray : IDisposable
     private readonly ToolStripMenuItem toggleItem;
     private readonly Icon codingIcon, gamingIcon;
 
-    public Tray(Action open, Func<Task> toggle, Action quit)
+    /// <param name="aiApps">The Vibe page's apps and whether each is running, checked when the menu opens.</param>
+    /// <param name="setApp">Opens (true) or closes (false) one app by id.</param>
+    public Tray(
+        Action open,
+        Func<Task> toggle,
+        Action quit,
+        Func<Task> openAll,
+        Func<Task> closeAll,
+        Func<IReadOnlyList<(string Id, string Name, bool Running)>> aiApps,
+        Func<string, bool, Task> setApp)
     {
         var menu = new ContextMenuStrip();
         toggleItem = new ToolStripMenuItem("Start gaming", null, async (_, _) => await toggle());
         menu.Items.Add(toggleItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Open all AI apps", null, async (_, _) => await openAll());
+        menu.Items.Add("Close all AI apps", null, async (_, _) => await closeAll());
+        var appsItem = new ToolStripMenuItem("AI apps");
+        appsItem.DropDownItems.Add(new ToolStripMenuItem("(checking...)") { Enabled = false });
+        appsItem.DropDownOpening += (_, _) =>
+        {
+            // ✓ = running; click to open or close it, without opening the window.
+            appsItem.DropDownItems.Clear();
+            var apps = aiApps();
+            foreach (var (id, name, running) in apps)
+                appsItem.DropDownItems.Add(new ToolStripMenuItem(name, null, async (_, _) => await setApp(id, !running)) { Checked = running });
+            if (apps.Count == 0) appsItem.DropDownItems.Add(new ToolStripMenuItem("No AI apps yet") { Enabled = false });
+        };
+        menu.Items.Add(appsItem);
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open VibeShift", null, (_, _) => open());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => quit());
