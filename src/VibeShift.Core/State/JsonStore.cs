@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace VibeShift.Core.State;
 
-/// <summary>settings.json and session.json in one folder. Saves are atomic; unreadable files are set aside as *.bad.</summary>
+/// <summary>settings.json, session.json and stats.json in one folder. Saves are atomic; unreadable files are set aside as *.bad.</summary>
 public sealed class JsonStore(string dir)
 {
     private static readonly JsonSerializerOptions Options = new()
@@ -48,6 +48,25 @@ public sealed class JsonStore(string dir)
     public void SaveSession(SessionState s) => Save(SessionPath, s);
 
     public void ClearSession() => File.Delete(SessionPath);
+
+    private string StatsPath => Path.Combine(dir, "stats.json");
+
+    /// <summary>Finished gaming sessions (stats.json), oldest first.</summary>
+    public List<GamingRecord> LoadStats()
+    {
+        var all = Load<List<GamingRecord>>(StatsPath) ?? [];
+        all.RemoveAll(r => r is null);
+        return all;
+    }
+
+    /// <summary>Records a finished session, keeping the last 90 days.</summary>
+    public void AddStat(GamingRecord record, DateTime nowUtc)
+    {
+        var all = LoadStats();
+        all.RemoveAll(r => r.EndedUtc < nowUtc.AddDays(-90));
+        all.Add(record);
+        Save(StatsPath, all);
+    }
 
     private static T? Load<T>(string path) where T : class
     {

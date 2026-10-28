@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -13,6 +14,7 @@ using VibeShift.Core.Games;
 using VibeShift.Core.Processes;
 using VibeShift.Core.State;
 using VibeShift.Core.Switching;
+using VibeShift.Core.Updates;
 
 namespace VibeShift;
 
@@ -42,7 +44,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OpenAllCommand = new RelayCommand(OpenAllAsync);
         CloseAllCommand = new RelayCommand(CloseAllAsync);
         PlayCommand = new RelayCommand(PlayAsync);
+        CheckUpdatesCommand = new RelayCommand(() => CheckUpdatesAsync(quiet: false));
+        UpdateCommand = new RelayCommand(UpdateAsync);
         MyGames = new ObservableCollection<string>(settings.MyGames);
+        if (!demo) stats = store.LoadStats();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -144,6 +149,160 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public bool HasHotkeyStatus => HotkeyStatus.Length > 0;
+
+    // ----- Stats -----
+
+    private List<GamingRecord> stats = [];
+    private string statsText = "";
+
+    /// <summary>Home: "Last 7 days: ..." while vibe coding, "In gaming mode for ..." while gaming.</summary>
+    public string StatsText
+    {
+        get => statsText;
+        private set { if (Set(ref statsText, value)) Raise(nameof(HasStats)); }
+    }
+
+    public bool HasStats => StatsText.Length > 0;
+
+    private void UpdateStats() =>
+        StatsText = IsGaming
+            ? session is { } s ? "In gaming mode for " + Format.Duration(DateTime.UtcNow - s.StartedUtc) : ""
+            : Stats.Week(stats, DateTime.UtcNow);
+
+    // ----- Gaming power plan -----
+
+    public sealed record PowerPlanOption(string Id, string Name);
+
+    /// <summary>"Don't change" plus this PC's own power plans (OEM ones included).</summary>
+    public IReadOnlyList<PowerPlanOption> PowerPlanOptions { get; private set; } = [new("", "Don't change")];
+
+    /// <summary>The plan to use while gaming; "" leaves the power plan alone.</summary>
+    public string GamingPowerPlan
+    {
+        get => Settings.GamingPowerPlan ?? "";
+        set
+        {
+            // null is the list letting go of its selection while its items reload, not a choice.
+            if (value is null || value == GamingPowerPlan) return;
+            Settings.GamingPowerPlan = value.Length == 0 ? null : value;
+            SaveSettings();
+            Raise();
+        }
+    }
+
+    public async Task LoadPowerPlansAsync()
+    {
+        if (demo) return;
+        try
+        {
+            var plans = await Task.Run(PowerPlans.List);
+            PowerPlanOptions = [new("", "Don't change"), .. plans.Select(p => new PowerPlanOption(p.Guid, p.Name))];
+            Raise(nameof(PowerPlanOptions));
+            Raise(nameof(GamingPowerPlan));
+        }
+        catch (Exception e)
+        {
+            Log.Write("Couldn't list power plans: " + e.Message);
+        }
+    }
+
+    // ----- Updates -----
+
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(30) };
+    private string updateStatus = "";
+    private bool updating;
+
+    /// <summary>Raised once an update is swapped in: the App restarts into the exe at this path.</summary>
+    public event Action<string>? RestartRequested;
+
+    public ICommand CheckUpdatesCommand { get; }
+    public ICommand UpdateCommand { get; }
+
+    public Release? AvailableUpdate { get; private set; }
+    public bool HasUpdate => AvailableUpdate is not null;
+    public bool CanCheckUpdates => !updating;
+
+    /// <summary>The Home page's update link: "Update to 1.5.0", or how the update is going.</summary>
+    public string UpdateText => updating && HasUpdate ? UpdateStatus : AvailableUpdate is { } r ? $"Update to {r.Version.ToString(3)}" : "";
+
+    public string UpdateStatus
+    {
+        get => updateStatus;
+        private set { if (Set(ref updateStatus, value)) { Raise(nameof(HasUpdateStatus)); Raise(nameof(UpdateText)); } }
+    }
+
+    public bool HasUpdateStatus => UpdateStatus.Length > 0;
+
+    /// <summary>Off by default: nothing leaves the PC unless the user asks.</summary>
+    public bool CheckForUpdates
+    {
+        get => Settings.CheckForUpdates;
+        set
+        {
+            Settings.CheckForUpdates = value;
+            SaveSettings();
+            Raise();
+            if (value) _ = CheckUpdatesAsync(quiet: false);
+        }
+    }
+
+    /// <summary>Asks GitHub for the latest release. The quiet daily check only speaks up when there's an update.</summary>
+    public async Task CheckUpdatesAsync(bool quiet)
+    {
+        if (demo || updating || (quiet && !Settings.CheckForUpdates)) return;
+        SetUpdating(true);
+        if (!quiet) UpdateStatus = "Checking...";
+        try
+        {
+            using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var latest = await Updater.CheckAsync(Http, timeout.Token);
+            AvailableUpdate = latest is not null && Updater.IsNewer(latest, typeof(MainViewModel).Assembly.GetName().Version!) ? latest : null;
+            Raise(nameof(AvailableUpdate));
+            Raise(nameof(HasUpdate));
+            if (AvailableUpdate is { } r) UpdateStatus = $"VibeShift {r.Version.ToString(3)} is out.";
+            else if (!quiet) UpdateStatus = "You have the latest version.";
+        }
+        catch (Exception e)
+        {
+            Log.Write("Update check failed: " + e.Message);
+            if (!quiet) UpdateStatus = "Couldn't reach GitHub. Try again later.";
+        }
+        finally
+        {
+            SetUpdating(false);
+        }
+    }
+
+    /// <summary>Downloads the update, checks its SHA-256, swaps it in and has the App restart into it.</summary>
+    public async Task UpdateAsync()
+    {
+        if (AvailableUpdate is not { } r || updating || IsBusy || demo || Environment.ProcessPath is not { } exe) return;
+        SetUpdating(true);
+        UpdateStatus = $"Downloading {r.Version.ToString(3)}...";
+        try
+        {
+            await Updater.InstallAsync(Http, r, exe);
+            Log.Write($"Updated to {r.Version.ToString(3)}, restarting");
+            UpdateStatus = "Restarting...";
+            RestartRequested?.Invoke(exe);
+        }
+        catch (Exception e)
+        {
+            Log.Write("Update failed: " + e.Message);
+            UpdateStatus = e is InvalidDataException ? e.Message : "Couldn't update this copy. Download the new version from GitHub instead.";
+        }
+        finally
+        {
+            SetUpdating(false);
+        }
+    }
+
+    private void SetUpdating(bool on)
+    {
+        updating = on;
+        Raise(nameof(CanCheckUpdates));
+        Raise(nameof(UpdateText));
+    }
 
     // ----- Vibe page: live on/off for AI apps -----
 
@@ -529,6 +688,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     (result.Opened.Count > 0 ? "Opened " + string.Join(", ", result.Opened) + "." : "Your apps are ready.")
                     + (result.Failed.Count > 0 ? " Couldn't open " + string.Join(", ", result.Failed) + "." : "");
                 session = null;
+                stats = store.LoadStats();
                 Mode = Mode.Coding;
             }
             Switched?.Invoke(Mode, automatic);
@@ -649,6 +809,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         FreeRamText = Format.Bytes(avail);
         AppsText = $"{all.Count(r => r.IsRunning)} open";
         ThirdValue = Format.Bytes(IsGaming ? session?.Freed ?? 0 : estimated);
+        UpdateStats();
     }
 
     /// <summary>Fills the mockup's sample numbers, for --screenshot.</summary>
@@ -698,6 +859,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ];
         Raise(nameof(Games));
         RaisePlay();
+        StatsText = IsGaming ? "In gaming mode for 1 h 12 m" : "Last 7 days: 4 sessions · 18.2 GB freed · 9 h 12 m in gaming mode";
+        PowerPlanOptions = [new("", "Don't change"), new("1", "Balanced"), new("2", "High performance"), new("3", "Power saver")];
         FreeRamText = IsGaming ? "11.4 GB" : "8.2 GB";
         AppsText = IsGaming ? "0 open" : "4 open";
         ThirdValue = "3.2 GB";

@@ -64,6 +64,19 @@ If another app already uses one of these, Settings says so.
 - The same controls are in the tray's right-click menu: **Open all AI apps**, **Close all AI apps**, and an **AI apps** submenu where a ✓ means running. Click an app to open or close it, without opening the window.
 - VibeShift learns how to start an app the first time it sees it running, so an app shows up on the Vibe page once you've opened it once (or added it yourself).
 
+**Power plan**
+
+- Under **Settings → Power plan**, pick a plan to use while you game: Windows' High performance, or your PC maker's own (a Lenovo Legion's Performance Mode, say). VibeShift switches to it when you start gaming and back to the plan you had when you're done, even after a crash. Switching plans needs no admin permission.
+
+**Stats**
+
+- Home shows how long you've been in gaming mode, and in vibe coding mode, your last 7 days: sessions, RAM freed and time spent gaming.
+
+**Updates**
+
+- **Settings → About → Check for updates** asks GitHub for the latest release. If there's a newer one, one click downloads it, checks it against the SHA-256 GitHub publishes for it, swaps it in and restarts VibeShift. Your settings and any gaming session carry over.
+- Turn on **Check for updates automatically** to have VibeShift check once a day. It's off until you turn it on, and VibeShift never updates without your click.
+
 Closing the window keeps VibeShift running as a small icon by the clock, with a green dot in vibe coding mode and a purple one while gaming. Right-click it to switch modes or quit. Windows 11 tucks new icons under the **^** arrow; drag it onto the taskbar to keep it in sight, and turn on **Start with Windows** in Settings so it's always there.
 
 ## What it can close
@@ -116,11 +129,12 @@ Off by default. When it's on, **Start gaming** also pauses two Windows backgroun
 
 ## Privacy and permissions
 
-- VibeShift never connects to the internet. No telemetry, no accounts, no update checks.
+- VibeShift only goes online to check GitHub for updates: when you click **Check for updates**, or once a day if you turn that on. No telemetry, no accounts.
 - It runs as a normal app, without admin rights. Only Extra boost asks for admin, and only when you click.
 - Its files live in `%APPDATA%\VibeShift`:
   - `settings.json`: your choices.
   - `session.json`: what to reopen. It only exists while you're in gaming mode.
+  - `stats.json`: when your last 90 days of gaming sessions started and ended, and the RAM each one freed.
   - `vibeshift.log`: a short log, handy if you open an issue.
 
 ## Build from source

@@ -33,7 +33,10 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <StackPanel Orientation="Horizontal">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="{Binding UpdateText}" Command="{Binding UpdateCommand}"
+                        VerticalAlignment="Center" IsEnabled="{Binding CanCheckUpdates}" Visibility="{Binding HasUpdate, Converter={StaticResource Visible}}"
+                        ToolTip="Downloads the new version from GitHub and restarts VibeShift" />
                 <Ellipse Width="9" Height="9" Margin="0,2,10,0" VerticalAlignment="Center">
                     <Ellipse.Style>
                         <Style TargetType="Ellipse">
@@ -47,7 +50,7 @@
                     </Ellipse.Style>
                 </Ellipse>
                 <TextBlock Text="{Binding ModeText}" FontSize="18" FontWeight="SemiBold" />
-            </StackPanel>
+            </DockPanel>
 
             <UniformGrid Grid.Row="1" Columns="3" Margin="-4,14,-4,16">
                 <Border Style="{StaticResource Tile}" Margin="4">
@@ -107,6 +110,8 @@
                 <Button Style="{StaticResource SoftButton}" Content="{Binding PlayText}" Command="{Binding PlayCommand}" Margin="0,8,0,0"
                         IsEnabled="{Binding IsIdle}" Visibility="{Binding CanPlay, Converter={StaticResource Visible}}"
                         ToolTip="Closes your apps for gaming, then starts the game (Ctrl+Alt+P)" />
+                <TextBlock Style="{StaticResource Hint}" Text="{Binding StatsText}" HorizontalAlignment="Center" Margin="0,10,0,0"
+                           Visibility="{Binding HasStats, Converter={StaticResource Visible}}" />
             </StackPanel>
         </Grid>
 
@@ -240,7 +245,7 @@
         </ScrollViewer>
 
         <!-- Settings -->
-        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+        <ScrollViewer x:Name="SettingsScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto"
                       Visibility="{Binding IsChecked, ElementName=SettingsTab, Converter={StaticResource Visible}}">
             <StackPanel Margin="18,16,18,18">
                 <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" />
@@ -305,6 +310,16 @@
                                    Text="When you click Start gaming, apps get this long to close on their own. Auto mode closes them right away." />
                         <ListBox Style="{StaticResource Segmented}" HorizontalAlignment="Left" ItemsSource="{Binding ForceCloseOptions}"
                                  ItemStringFormat="{}{0} s" SelectedItem="{Binding ForceCloseSeconds}" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource Label}" Text="POWER PLAN" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                                   Text="Switch to this power plan while you game, and back to the one you had afterwards." />
+                        <ListBox Style="{StaticResource ChoiceList}" ItemsSource="{Binding PowerPlanOptions}" DisplayMemberPath="Name"
+                                 SelectedValuePath="Id" SelectedValue="{Binding GamingPowerPlan}" AutomationProperties.Name="Power plan while gaming" />
                     </StackPanel>
                 </Border>
 
@@ -378,12 +393,31 @@
                 <TextBlock Style="{StaticResource Label}" Text="ABOUT" Margin="0,18,0,7" />
                 <Border Style="{StaticResource Tile}">
                     <StackPanel>
-                        <TextBlock Text="{Binding Version}" />
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Check for updates" Command="{Binding CheckUpdatesCommand}"
+                                    VerticalAlignment="Center" IsEnabled="{Binding CanCheckUpdates}" />
+                            <TextBlock Text="{Binding Version}" />
+                        </DockPanel>
                         <TextBlock Margin="0,3,0,0" FontSize="12">
                             <Hyperlink NavigateUri="https://github.com/bth0mp/VibeShift" RequestNavigate="Link_RequestNavigate"
                                        Foreground="{DynamicResource HighlightBrush}">github.com/bth0mp/VibeShift</Hyperlink>
                         </TextBlock>
-                        <TextBlock Style="{StaticResource Hint}" Margin="0,3,0,0" Text="MIT License. Nothing leaves your PC." />
+                        <DockPanel Margin="0,8,0,0" Visibility="{Binding HasUpdateStatus, Converter={StaticResource Visible}}">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="{Binding UpdateText}" Command="{Binding UpdateCommand}"
+                                    VerticalAlignment="Center" IsEnabled="{Binding CanCheckUpdates}" Visibility="{Binding HasUpdate, Converter={StaticResource Visible}}" />
+                            <TextBlock Text="{Binding UpdateStatus}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" Margin="0,0,10,0" />
+                        </DockPanel>
+                        <Rectangle Height="1" Fill="{DynamicResource BorderBrush}" Margin="0,11" />
+                        <DockPanel>
+                            <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding CheckForUpdates}" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Check for updates automatically" />
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="Check for updates automatically" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
+                                           Text="Once a day, VibeShift asks GitHub whether there's a newer version. It never updates without your click." />
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,11,0,0" Text="MIT License. Nothing leaves your PC except update checks." />
                     </StackPanel>
                 </Border>
             </StackPanel>

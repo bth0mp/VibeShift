@@ -13,6 +13,7 @@ using VibeShift.Core.Games;
 using VibeShift.Core.Processes;
 using VibeShift.Core.State;
 using VibeShift.Core.Switching;
+using VibeShift.Core.Updates;
 
 namespace VibeShift;
 
@@ -41,7 +42,8 @@ public partial class App : Application
         }
         if (Arg(e.Args, "--screenshot") is { } png)
         {
-            Screenshot(png, Arg(e.Args, "--theme") ?? "dark", Arg(e.Args, "--demo") ?? "coding", Arg(e.Args, "--page") ?? "home");
+            Screenshot(png, Arg(e.Args, "--theme") ?? "dark", Arg(e.Args, "--demo") ?? "coding", Arg(e.Args, "--page") ?? "home",
+                e.Args.Contains("--bottom"));
             return;
         }
 
@@ -65,6 +67,7 @@ public partial class App : Application
 
         var store = JsonStore.Default;
         Log.Init(store.Dir);
+        if (Environment.ProcessPath is { } exe) Updater.CleanUp(exe); // the exe an update replaced
         DispatcherUnhandledException += (_, ev) =>
         {
             Log.Write("Unhandled: " + ev.Exception);
@@ -97,6 +100,8 @@ public partial class App : Application
         vm.SettingsChanged += ApplyHotkeys;
         vm.SettingsChanged += () => _ = vm.LoadGamesAsync();
         _ = vm.LoadGamesAsync();
+        _ = vm.LoadPowerPlansAsync();
+        vm.RestartRequested += RestartInto;
         tray.Update(vm.Mode);
         vm.Switched += (mode, automatic) =>
         {
@@ -116,7 +121,41 @@ public partial class App : Application
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
+        // Update check, only if the user turned it on: shortly after start, then once a day.
+        var updateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        updateTimer.Tick += (_, _) =>
+        {
+            updateTimer.Interval = TimeSpan.FromHours(24);
+            _ = vm.CheckUpdatesAsync(quiet: true);
+        };
+        updateTimer.Start();
         started = true;
+    }
+
+    /// <summary>An update was swapped in: hand the single-instance lock to the new exe and leave.</summary>
+    private void RestartInto(string exe)
+    {
+        try
+        {
+            instance?.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+            // not held by this thread; disposing still frees it once we exit
+        }
+        instance?.Dispose();
+        instance = null;
+        try
+        {
+            var start = new ProcessStartInfo(exe) { UseShellExecute = false };
+            if (window?.IsVisible != true) start.ArgumentList.Add("--tray");
+            Process.Start(start)?.Dispose();
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Log.Write("Restart after update failed: " + e.Message); // the next launch runs the new version
+        }
+        Quit();
     }
 
     /// <summary>Ctrl+Alt+G switch modes, Ctrl+Alt+V open all AI apps, Ctrl+Alt+P play; off when the setting is.</summary>
@@ -230,7 +269,7 @@ public partial class App : Application
     }
 
     /// <summary>--screenshot: renders the window with the mockup's sample data to a 2x PNG and exits. Touches no processes.</summary>
-    private void Screenshot(string png, string theme, string demoMode, string page)
+    private void Screenshot(string png, string theme, string demoMode, string page, bool bottom)
     {
         ThemeManager.Apply(theme == "light" ? ThemeChoice.Light : ThemeChoice.Dark);
         var demoVm = new MainViewModel(new JsonStore(Path.GetTempPath()), new Settings(), demo: true);
@@ -246,6 +285,11 @@ public partial class App : Application
         w.ShowPage(page);
         w.ContentRendered += (_, _) =>
         {
+            if (bottom) // --bottom: the end of the Settings page, which is taller than the window
+            {
+                w.SettingsScroll.ScrollToEnd();
+                w.UpdateLayout();
+            }
             var root = (FrameworkElement)w.Content;
             var bmp = new RenderTargetBitmap((int)(root.ActualWidth * 2), (int)(root.ActualHeight * 2), 192, 192, PixelFormats.Pbgra32);
             bmp.Render(root);

@@ -41,6 +41,12 @@ public sealed class Settings
     /// <summary>Ctrl+Alt+G switch, Ctrl+Alt+V open all AI apps, Ctrl+Alt+P play.</summary>
     public bool Hotkeys { get; set; } = true;
 
+    /// <summary>Power plan GUID to switch to while gaming; null leaves the power plan alone.</summary>
+    public string? GamingPowerPlan { get; set; }
+
+    /// <summary>Ask GitHub once a day whether a newer VibeShift is out. Off by default: nothing leaves the PC unasked.</summary>
+    public bool CheckForUpdates { get; set; }
+
     /// <summary>How to start each app VibeShift has seen running (exe path or Store AUMID), so vibe apps can be opened.</summary>
     public Dictionary<string, ClosedApp> LaunchTargets { get; set; } = [];
     public List<string> BoostServices { get; set; } = ["SysMain", "WSearch"];
@@ -92,6 +98,9 @@ public sealed class SessionState
 
     public List<string> StoppedServices { get; set; } = [];
     public bool WslShutDown { get; set; }
+
+    /// <summary>The power plan that was active before gaming (null if VibeShift didn't change it), restored on the way back.</summary>
+    public string? PowerPlanBefore { get; set; }
 
     /// <summary>Every entry closed, including MCP and CLI rows that never reopen; drives row tags.</summary>
     public List<string> ClosedEntryIds { get; set; } = [];

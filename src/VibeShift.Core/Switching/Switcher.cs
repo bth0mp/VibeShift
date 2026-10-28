@@ -123,7 +123,14 @@ public sealed class Switcher(JsonStore store)
             }
         }
         session.WslShutDown = plan.ShutdownWsl;
+        // Gaming power plan: the current plan goes in the session first, so even a crash can put it back.
+        if (s.GamingPowerPlan is { } gamingPlan)
+            Step("read power plan", () =>
+            {
+                if (PowerPlans.List().FirstOrDefault(p => p.Active) is { } active && active.Guid != gamingPlan) session.PowerPlanBefore = active.Guid;
+            });
         store.SaveSession(session); // before anything is closed, so a crash mid-switch can still switch back
+        if (session.PowerPlanBefore is not null) Step("set power plan", () => PowerPlans.SetActive(s.GamingPowerPlan!));
 
         if (plan.Close.Count > 0)
         {
@@ -171,6 +178,7 @@ public sealed class Switcher(JsonStore store)
 
     private ReopenResult BackToCoding(Settings s, SessionState session, IProgress<string>? progress)
     {
+        if (session.PowerPlanBefore is { } before) Step("restore power plan", () => PowerPlans.SetActive(before));
         if (session.StoppedServices.Count > 0)
         {
             progress?.Report("Restarting Windows services...");
@@ -180,6 +188,7 @@ public sealed class Switcher(JsonStore store)
         // What was closed for gaming, plus the user's vibe apps that aren't open yet.
         var toOpen = SwitchPlanner.PlanVibeLaunch(session, Running(s), s.VibeApps, LaunchTargets(s));
         var result = Launch(s, toOpen, progress);
+        Step("save stats", () => store.AddStat(new GamingRecord(session.StartedUtc, DateTime.UtcNow, session.Freed), DateTime.UtcNow));
         store.ClearSession();
         Log.Write($"Vibe coding mode: opened {result.Opened.Count} of {toOpen.Count}");
         return result;
