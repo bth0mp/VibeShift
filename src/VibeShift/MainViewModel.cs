@@ -41,6 +41,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         PrimaryCommand = new RelayCommand(() => ToggleModeAsync(automatic: false));
         OpenAllCommand = new RelayCommand(OpenAllAsync);
         CloseAllCommand = new RelayCommand(CloseAllAsync);
+        PlayCommand = new RelayCommand(PlayAsync);
         MyGames = new ObservableCollection<string>(settings.MyGames);
     }
 
@@ -61,6 +62,88 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<AppRow> HomeRows { get; } = [];
     public ObservableCollection<AppRow> AllRows { get; } = [];
     public ObservableCollection<string> MyGames { get; }
+
+    // ----- Play button -----
+
+    /// <summary>Installed games (Steam, Epic, My games), most recently played first.</summary>
+    public IReadOnlyList<InstalledGame> Games { get; private set; } = [];
+
+    public ICommand PlayCommand { get; }
+
+    /// <summary>The Play button's game: the one picked in Settings, else the most recently played.</summary>
+    public InstalledGame? PlayTarget => Games.FirstOrDefault(g => g.Id == Settings.PlayGame) ?? Games.FirstOrDefault();
+
+    public bool CanPlay => PlayTarget is not null && IsCoding;
+    public string PlayText => PlayTarget is { } g ? "▶  Play " + g.Name : "";
+
+    /// <summary>Settings page selection; null clears it back to "most recently played".</summary>
+    public string? PlayGameId
+    {
+        get => PlayTarget?.Id;
+        set
+        {
+            if (value is null || value == PlayTarget?.Id) return;
+            Settings.PlayGame = value;
+            SaveSettings();
+            RaisePlay();
+        }
+    }
+
+    public async Task LoadGamesAsync()
+    {
+        if (demo) return;
+        var mine = Settings.MyGames.ToList();
+        Games = await Task.Run(() => GameLibraries.InstalledGames(mine));
+        Raise(nameof(Games));
+        RaisePlay();
+    }
+
+    /// <summary>One click from coding to in-game: switch to gaming mode (freeing the RAM first), then launch the game.</summary>
+    public async Task PlayAsync()
+    {
+        if (PlayTarget is not { } game || demo) return;
+        // A Vibe page action or a switch may still be finishing: wait for it (up to 20 s) rather than launch the
+        // game without freeing the RAM first.
+        for (int i = 0; i < 100 && (IsBusy || vibeBusy); i++) await Task.Delay(200);
+        if (Mode == Mode.Coding) await ToggleModeAsync(automatic: false);
+        if (Mode == Mode.Coding) Log.Write("Play: couldn't switch to gaming mode first; launching anyway");
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(game.LaunchUri) { UseShellExecute = true })?.Dispose();
+            Log.Write($"Play: launched {game.Name}");
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Log.Write($"Play: couldn't launch {game.Name}: {e.Message}");
+        }
+    }
+
+    private void RaisePlay()
+    {
+        Raise(nameof(PlayTarget));
+        Raise(nameof(PlayText));
+        Raise(nameof(CanPlay));
+        Raise(nameof(PlayGameId));
+    }
+
+    // ----- Hotkeys -----
+
+    public bool Hotkeys
+    {
+        get => Settings.Hotkeys;
+        set { Settings.Hotkeys = value; SaveSettings(); Raise(); }
+    }
+
+    private string hotkeyStatus = "";
+
+    /// <summary>Set by the App after registering: empty when all three shortcuts work.</summary>
+    public string HotkeyStatus
+    {
+        get => hotkeyStatus;
+        set { if (Set(ref hotkeyStatus, value)) Raise(nameof(HasHotkeyStatus)); }
+    }
+
+    public bool HasHotkeyStatus => HotkeyStatus.Length > 0;
 
     // ----- Vibe page: live on/off for AI apps -----
 
@@ -323,7 +406,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set
         {
             if (!Set(ref mode, value)) return;
-            foreach (var n in new[] { nameof(IsGaming), nameof(IsCoding), nameof(ModeText), nameof(ThirdLabel), nameof(ListTitle), nameof(PrimaryText) })
+            foreach (var n in new[] { nameof(IsGaming), nameof(IsCoding), nameof(ModeText), nameof(ThirdLabel), nameof(ListTitle), nameof(PrimaryText), nameof(CanPlay) })
                 Raise(n);
         }
     }
@@ -470,6 +553,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnToggle(AppRow row, bool on)
     {
         Settings.Toggles[row.Id] = on;
+        if (on && Settings.GameApps.Remove(row.Id)) row.SetIsGameSilently(false); // can't close and open for gaming
+        SaveSettings();
+        _ = RefreshAsync();
+    }
+
+    /// <summary>"Open when gaming". An app can't be both opened and closed for gaming, so this turns Close off.</summary>
+    private void OnGame(AppRow row, bool on)
+    {
+        Settings.GameApps.Remove(row.Id);
+        if (on)
+        {
+            Settings.GameApps.Add(row.Id);
+            Settings.Toggles[row.Id] = false;
+            row.SetIsOnSilently(false);
+        }
         SaveSettings();
         _ = RefreshAsync();
     }
@@ -516,6 +614,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             row.IsRunning = isRunning;
             row.SetIsOnSilently(Settings.IsOn(e));
             row.SetIsVibeSilently(Settings.VibeApps.Contains(e.Id));
+            row.SetIsGameSilently(Settings.GameApps.Contains(e.Id));
             row.ShowToggle = IsCoding;
             row.RamText = isRunning ? Format.Bytes(d!.Bytes) : "not running";
             if (isRunning) failedReopen.Remove(e.Id);
@@ -591,6 +690,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         Sync(VibeRows, vibeList);
         Raise(nameof(HasVibeRows));
+        Games =
+        [
+            new("steam:1422450", "Deadlock", "steam://rungameid/1422450", DateTime.UtcNow),
+            new("steam:730", "Counter-Strike 2", "steam://rungameid/730", DateTime.UtcNow.AddDays(-7)),
+            new("steam:221100", "DayZ", "steam://rungameid/221100", DateTime.UtcNow.AddDays(-9)),
+        ];
+        Raise(nameof(Games));
+        RaisePlay();
         FreeRamText = IsGaming ? "11.4 GB" : "8.2 GB";
         AppsText = IsGaming ? "0 open" : "4 open";
         ThirdValue = "3.2 GB";
@@ -606,7 +713,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private AppRow Row(CatalogEntry e)
     {
-        if (!rows.TryGetValue(e.Id, out var row)) rows[e.Id] = row = new AppRow(e, demo ? null : OnToggle, demo ? null : OnVibe);
+        if (!rows.TryGetValue(e.Id, out var row)) rows[e.Id] = row = new AppRow(e, demo ? null : OnToggle, demo ? null : OnVibe, demo ? null : OnGame);
         return row;
     }
 

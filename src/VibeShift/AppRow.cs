@@ -16,14 +16,16 @@ public sealed class AppRow : INotifyPropertyChanged
 
     private readonly Action<AppRow, bool>? onToggle;
     private readonly Action<AppRow, bool>? onVibe;
-    private bool isOn, isVibe, isRunning, isDimmed, showToggle;
+    private readonly Action<AppRow, bool>? onGame;
+    private bool isOn, isVibe, isGame, isRunning, isDimmed, showToggle;
     private string ramText = "", tag = "";
 
-    public AppRow(CatalogEntry entry, Action<AppRow, bool>? onToggle, Action<AppRow, bool>? onVibe = null)
+    public AppRow(CatalogEntry entry, Action<AppRow, bool>? onToggle, Action<AppRow, bool>? onVibe = null, Action<AppRow, bool>? onGame = null)
     {
         Entry = entry;
         this.onToggle = onToggle;
         this.onVibe = onVibe;
+        this.onGame = onGame;
         BadgeBrush = (Brush)new BrushConverter().ConvertFromString(entry.Color)!;
         BadgeBrush.Freeze();
     }
@@ -67,7 +69,17 @@ public sealed class AppRow : INotifyPropertyChanged
         }
     }
 
-    /// <summary>Only apps VibeShift can start again can be vibe apps (not MCP servers, CLI agents or Widgets).</summary>
+    /// <summary>"Open when gaming" (Discord, OBS...): started when you start gaming, never closed for it.</summary>
+    public bool IsGame
+    {
+        get => isGame;
+        set
+        {
+            if (Set(ref isGame, value)) onGame?.Invoke(this, value);
+        }
+    }
+
+    /// <summary>Only apps VibeShift can start again can be vibe or game apps (not MCP servers, CLI agents or Widgets).</summary>
     public bool CanVibe => Entry.Reopen;
 
     public bool IsRunning { get => isRunning; set => Set(ref isRunning, value); }
@@ -96,6 +108,8 @@ public sealed class AppRow : INotifyPropertyChanged
     public void SetIsOnSilently(bool value) => Set(ref isOn, value, nameof(IsOn));
 
     public void SetIsVibeSilently(bool value) => Set(ref isVibe, value, nameof(IsVibe));
+
+    public void SetIsGameSilently(bool value) => Set(ref isGame, value, nameof(IsGame));
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {

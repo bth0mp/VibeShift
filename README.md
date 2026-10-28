@@ -38,6 +38,25 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 - Microsoft Store apps (like Claude and ChatGPT) reopen through Windows, the same way the Start menu opens them.
 - If VibeShift crashes or your PC restarts in the middle of a game, it opens in gaming mode next time, so **Back to vibe coding** still knows what to reopen.
 
+**Play button**
+
+- **▶ Play Deadlock** (or whichever game you played last) sits under Start gaming: one click closes your apps for gaming, opens your game-time apps, then launches the game through Steam or Epic. Pick a different game under **Settings → Play button**; your own games from **My games** are listed too.
+- With **Switch back when my game closes** on, that's the whole loop: one click to play, and your AI apps are back when you quit.
+
+**Game-time apps**
+
+- The Apps page has three switches per app: **Close** (closed when you start gaming), **Game** (opened when you start gaming, like Discord, OBS or Spotify) and **Vibe** (opened when you're back to vibe coding). An app can't be both closed and opened for gaming, so Game and Close turn each other off.
+
+**Keyboard shortcuts** (work from anywhere, even mid-game; turn them off in Settings)
+
+| Shortcut | Does |
+|---|---|
+| **Ctrl+Alt+G** | Start gaming / back to vibe coding |
+| **Ctrl+Alt+V** | Open all AI apps |
+| **Ctrl+Alt+P** | Play your game |
+
+If another app already uses one of these, Settings says so.
+
 **Vibe page (quick on/off)**
 
 - The ⚡ page lists your AI apps (Claude, ChatGPT, Cursor, Windsurf, Copilot, Ollama, LM Studio, plus anything you add) with a live switch each: on opens the app right now, off closes it right now. **Open all** and **Close all** do the whole list at once.

@@ -24,6 +24,7 @@ public partial class App : Application
     private MainWindow? window;
     private MainViewModel? vm;
     private Tray? tray;
+    private Hotkeys? hotkeys;
     private GameWatcher? watcher;
     private bool quitting, ticking, started;
 
@@ -89,7 +90,13 @@ public partial class App : Application
             Dispatcher.BeginInvoke(TrimMemory, DispatcherPriority.ApplicationIdle);
         };
         tray = new Tray(ShowWindow, () => vm.ToggleModeAsync(automatic: false), Quit,
-            vm.OpenAllAsync, vm.CloseAllAsync, vm.VibeAppsNow, vm.SetVibeAppAsync);
+            vm.OpenAllAsync, vm.CloseAllAsync, vm.VibeAppsNow, vm.SetVibeAppAsync,
+            () => vm.CanPlay ? "Play " + vm.PlayTarget!.Name : null, vm.PlayAsync);
+        hotkeys = new Hotkeys(window);
+        ApplyHotkeys();
+        vm.SettingsChanged += ApplyHotkeys;
+        vm.SettingsChanged += () => _ = vm.LoadGamesAsync();
+        _ = vm.LoadGamesAsync();
         tray.Update(vm.Mode);
         vm.Switched += (mode, automatic) =>
         {
@@ -112,8 +119,29 @@ public partial class App : Application
         started = true;
     }
 
+    /// <summary>Ctrl+Alt+G switch modes, Ctrl+Alt+V open all AI apps, Ctrl+Alt+P play; off when the setting is.</summary>
+    private void ApplyHotkeys()
+    {
+        if (hotkeys is null || vm is null) return;
+        if (!vm.Settings.Hotkeys)
+        {
+            hotkeys.Unregister();
+            vm.HotkeyStatus = "";
+            return;
+        }
+        var taken = hotkeys.Register(
+        [
+            ('G', "Ctrl+Alt+G", () => _ = vm.ToggleModeAsync(automatic: false)),
+            ('V', "Ctrl+Alt+V", () => _ = vm.OpenAllAsync()),
+            ('P', "Ctrl+Alt+P", () => _ = vm.PlayAsync()),
+        ]);
+        vm.HotkeyStatus = taken.Count == 0 ? "" : $"{string.Join(" and ", taken)} {(taken.Count == 1 ? "is" : "are")} already used by another app.";
+        if (taken.Count > 0) Log.Write("Hotkeys: " + vm.HotkeyStatus);
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        hotkeys?.Dispose();
         tray?.Dispose();
         instance?.Dispose();
         base.OnExit(e);

@@ -96,12 +96,18 @@
                 </ScrollViewer>
             </Border>
 
-            <Grid Grid.Row="4" Margin="0,16,0,0">
-                <Button Style="{StaticResource PrimaryButton}" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}"
-                        IsEnabled="{Binding IsIdle}" Visibility="{Binding IsCoding, Converter={StaticResource Visible}}" />
-                <Button Style="{StaticResource GhostButton}" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}"
-                        IsEnabled="{Binding IsIdle}" Visibility="{Binding IsGaming, Converter={StaticResource Visible}}" />
-            </Grid>
+            <StackPanel Grid.Row="4" Margin="0,16,0,0">
+                <Grid>
+                    <Button Style="{StaticResource PrimaryButton}" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}"
+                            IsEnabled="{Binding IsIdle}" Visibility="{Binding IsCoding, Converter={StaticResource Visible}}" />
+                    <Button Style="{StaticResource GhostButton}" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}"
+                            IsEnabled="{Binding IsIdle}" Visibility="{Binding IsGaming, Converter={StaticResource Visible}}" />
+                </Grid>
+                <!-- One click to in-game: switch to gaming mode, then launch the game -->
+                <Button Style="{StaticResource SoftButton}" Content="{Binding PlayText}" Command="{Binding PlayCommand}" Margin="0,8,0,0"
+                        IsEnabled="{Binding IsIdle}" Visibility="{Binding CanPlay, Converter={StaticResource Visible}}"
+                        ToolTip="Closes your apps for gaming, then starts the game (Ctrl+Alt+P)" />
+            </StackPanel>
         </Grid>
 
         <!-- Vibe: live on/off for AI apps -->
@@ -177,22 +183,25 @@
             <StackPanel Margin="18,16,18,18">
                 <TextBlock Text="Apps" FontSize="18" FontWeight="SemiBold" />
                 <TextBlock Style="{StaticResource Hint}" FontSize="12" Margin="0,6,0,16"
-                           Text="Choose what closes when you start gaming, and what opens when you're back to vibe coding. An app shows up here once VibeShift has seen it running, or when you add it yourself." />
+                           Text="Close: closed when you start gaming. Game: opened when you start gaming. Vibe: opened when you're back to vibe coding. An app shows up here once VibeShift has seen it running, or when you add it yourself." />
                 <DockPanel Margin="0,0,0,7">
                     <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="+ Add app" Click="AddApp_Click" />
                     <TextBlock Style="{StaticResource Label}" Text="YOUR APPS" />
                 </DockPanel>
-                <!-- column headings over the two switches in each row -->
+                <!-- column headings over the three switches in each row -->
                 <Grid Margin="12,0,12,5">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition />
+                        <ColumnDefinition Width="46" />
                         <ColumnDefinition Width="46" />
                         <ColumnDefinition Width="46" />
                         <ColumnDefinition Width="22" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="1" Style="{StaticResource Label}" FontSize="9" Text="CLOSE" HorizontalAlignment="Center"
                                ToolTip="Close when you start gaming" />
-                    <TextBlock Grid.Column="2" Style="{StaticResource Label}" FontSize="9" Text="OPEN" HorizontalAlignment="Center"
+                    <TextBlock Grid.Column="2" Style="{StaticResource Label}" FontSize="9" Text="GAME" HorizontalAlignment="Center"
+                               ToolTip="Open when you start gaming (Discord, OBS...)" />
+                    <TextBlock Grid.Column="3" Style="{StaticResource Label}" FontSize="9" Text="VIBE" HorizontalAlignment="Center"
                                ToolTip="Open when you switch back to vibe coding" />
                 </Grid>
                 <TextBlock Text="{Binding AppsMessage}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" Margin="0,0,0,8"
@@ -299,6 +308,46 @@
                     </StackPanel>
                 </Border>
 
+                <TextBlock Style="{StaticResource Label}" Text="PLAY BUTTON" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                                   Text="The game the Play button (and Ctrl+Alt+P) starts, after closing your apps for gaming. Your most recently played game is picked until you choose one." />
+                        <ListBox Style="{StaticResource ChoiceList}" ItemsSource="{Binding Games}" DisplayMemberPath="Name"
+                                 SelectedValuePath="Id" SelectedValue="{Binding PlayGameId}" AutomationProperties.Name="Play button game" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Style="{StaticResource Label}" Text="KEYBOARD SHORTCUTS" Margin="0,18,0,7" />
+                <Border Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <DockPanel>
+                            <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding Hotkeys}" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Keyboard shortcuts" />
+                            <TextBlock Text="Shortcuts that work from anywhere, even mid-game" Margin="0,0,12,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        </DockPanel>
+                        <Grid Margin="0,10,0,0" TextElement.FontSize="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource Pill}" Margin="0,2,10,2"><TextBlock Text="Ctrl+Alt+G" FontSize="11" /></Border>
+                            <TextBlock Grid.Column="1" Text="Start gaming / back to vibe coding" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" />
+                            <Border Grid.Row="1" Style="{StaticResource Pill}" Margin="0,2,10,2"><TextBlock Text="Ctrl+Alt+V" FontSize="11" /></Border>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Open all AI apps" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" />
+                            <Border Grid.Row="2" Style="{StaticResource Pill}" Margin="0,2,10,2"><TextBlock Text="Ctrl+Alt+P" FontSize="11" /></Border>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Play your game" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" />
+                        </Grid>
+                        <TextBlock Text="{Binding HotkeyStatus}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Visibility="{Binding HasHotkeyStatus, Converter={StaticResource Visible}}" />
+                    </StackPanel>
+                </Border>
+
                 <TextBlock Style="{StaticResource Label}" Text="STARTUP" Margin="0,18,0,7" />
                 <Border Style="{StaticResource Tile}">
                     <DockPanel>
@@ -386,6 +435,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="46" />
                         <ColumnDefinition Width="46" />
+                        <ColumnDefinition Width="46" />
                         <ColumnDefinition Width="22" />
                     </Grid.ColumnDefinitions>
                     <Border Width="22" Height="22" CornerRadius="6" Background="{Binding BadgeBrush}">
@@ -401,11 +451,15 @@
                     </Border>
                     <CheckBox Grid.Column="3" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsOn}" VerticalAlignment="Center" HorizontalAlignment="Center"
                               ToolTip="Close when you start gaming" AutomationProperties.Name="{Binding Name, StringFormat='Close {0} when gaming'}" />
-                    <CheckBox Grid.Column="4" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsVibe}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    <CheckBox Grid.Column="4" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsGame}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                              ToolTip="Open when you start gaming (and never close it for gaming)"
+                              AutomationProperties.Name="{Binding Name, StringFormat='Open {0} when gaming'}"
+                              Visibility="{Binding CanVibe, Converter={StaticResource Visible}}" />
+                    <CheckBox Grid.Column="5" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsVibe}" VerticalAlignment="Center" HorizontalAlignment="Center"
                               ToolTip="Open every time you switch back to vibe coding, even if it wasn't open before"
                               AutomationProperties.Name="{Binding Name, StringFormat='Open {0} when vibing'}"
                               Visibility="{Binding CanVibe, Converter={StaticResource Visible}}" />
-                    <Button Grid.Column="5" Style="{StaticResource IconButton}" Content="&#xE711;" Width="22" Click="RemoveApp_Click"
+                    <Button Grid.Column="6" Style="{StaticResource IconButton}" Content="&#xE711;" Width="22" Click="RemoveApp_Click"
                             ToolTip="Remove" AutomationProperties.Name="Remove app"
                             Visibility="{Binding IsCustom, Converter={StaticResource Visible}}" />
                 </Grid>

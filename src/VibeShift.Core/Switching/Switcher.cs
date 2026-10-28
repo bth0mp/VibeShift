@@ -157,6 +157,15 @@ public sealed class Switcher(JsonStore store)
         store.SaveSession(session);
         Log.Write($"Gaming mode ({(automatic ? "auto" : "manual")}): closed [{string.Join(", ", session.ClosedEntryIds)}], " +
                   $"services [{string.Join(", ", session.StoppedServices)}], freed {Format.Bytes(session.Freed)}");
+
+        // Game-time apps (Discord, OBS...) open after the RAM was measured, so FREED shows what closing gained.
+        var gameApps = SwitchPlanner.PlanVibeLaunch(new SessionState(), Running(s), s.GameApps, LaunchTargets(s));
+        if (gameApps.Count > 0)
+        {
+            progress?.Report("Opening your game apps...");
+            var opened = Launch(s, gameApps, null);
+            Log.Write($"Game apps: opened [{string.Join(", ", opened.Opened)}]");
+        }
         return session;
     }
 

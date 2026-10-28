@@ -28,9 +28,20 @@ public sealed class Tray : IDisposable
         Func<Task> openAll,
         Func<Task> closeAll,
         Func<IReadOnlyList<(string Id, string Name, bool Running)>> aiApps,
-        Func<string, bool, Task> setApp)
+        Func<string, bool, Task> setApp,
+        Func<string?> playText,
+        Func<Task> play)
     {
         var menu = new ContextMenuStrip();
+        var playItem = new ToolStripMenuItem("Play", null, async (_, _) => await play()) { Font = new Font(menu.Font, FontStyle.Bold) };
+        menu.Items.Add(playItem);
+        menu.Opening += (_, _) =>
+        {
+            // "Play Deadlock": the Play button's game, shown only in vibe coding mode with a game to play.
+            var text = playText();
+            playItem.Text = text ?? "";
+            playItem.Visible = text is not null;
+        };
         toggleItem = new ToolStripMenuItem("Start gaming", null, async (_, _) => await toggle());
         menu.Items.Add(toggleItem);
         menu.Items.Add(new ToolStripSeparator());
