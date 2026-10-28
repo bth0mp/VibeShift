@@ -306,6 +306,36 @@ public class SwitchPlannerTests
         Assert.Equal("Microsoft.Paint_8wekyb3d8bbwe!App", Switcher.LaunchTargets(s)[id].Aumid);
     }
 
+    [Theory] // 1.3 Vibe page: AI apps (and anything you added) get a live switch; plumbing doesn't
+    [InlineData("claude-desktop", true)]
+    [InlineData("chatgpt", true)]
+    [InlineData("ollama", true)]
+    [InlineData("m365copilot", true)]
+    [InlineData("mcp", false)]
+    [InlineData("docker-wsl", false)]
+    [InlineData("browsers", false)]
+    [InlineData("cli-agents", false)]
+    public void Vibe_page_lists_ai_apps(string id, bool expected) =>
+        Assert.Equal(expected, AppCatalog.IsAiApp(AppCatalog.BuiltIn.Single(e => e.Id == id)));
+
+    [Fact]
+    public void Added_apps_are_on_the_vibe_page_too() => Assert.True(AppCatalog.IsAiApp(AppCatalog.Custom(@"C:\Tools\thing.exe")));
+
+    [Fact] // 1.3: closing one app from the Vibe page touches nothing else, whatever the gaming toggles say
+    public void Closing_from_the_vibe_page_closes_only_the_chosen_app()
+    {
+        var all = new[] { P(1, 0, "claude"), P(2, 0, "Cursor"), P(3, 0, "node"), P(4, 0, "vmmemWSL") };
+        paths[1] = Desk;
+        cmds[3] = "node mcp-server-x";
+        settings.Toggles["docker-wsl"] = true;
+        settings.ExtraBoost = true;
+        var plan = SwitchPlanner.PlanGaming(all, Detect(all), settings.ForClosing(new[] { "cursor" }), automatic: false, 99_999, (_, _) => false);
+        Assert.Equal(new[] { "cursor" }, plan.Close.Select(c => c.Entry.Id)); // not Claude, not MCP, though both are on for gaming
+        Assert.False(plan.ShutdownWsl);
+        Assert.Empty(plan.StopServices);
+        Assert.True(settings.IsOn(AppCatalog.BuiltIn.Single(e => e.Id == "claude-desktop"))); // the real settings are untouched
+    }
+
     [Fact] // M12d: case-variant custom paths are one app, not a crash
     public void Custom_paths_differing_only_in_case_are_one_entry()
     {

@@ -53,6 +53,12 @@ public static class AppCatalog
         new("widgets", "Windows Widgets", EntryKind.App, ["Widgets", "WidgetService"], false, false, "#0078d4"),
     ];
 
+    private static readonly HashSet<string> AiAppIds =
+        ["claude-desktop", "chatgpt", "cursor", "windsurf", "copilot", "m365copilot", "ollama", "lmstudio"];
+
+    /// <summary>Apps that get a live on/off switch on the Vibe page: the AI apps, plus anything the user added.</summary>
+    public static bool IsAiApp(CatalogEntry e) => e.Kind == EntryKind.Custom || AiAppIds.Contains(e.Id);
+
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CatalogEntry> CustomCache =
         new(StringComparer.OrdinalIgnoreCase);
 

@@ -40,17 +40,41 @@ public sealed class Switcher(JsonStore store)
     public Task<ReopenResult> BackToCodingAsync(Settings s, SessionState session, IProgress<string>? progress) =>
         Task.Run(() => BackToCoding(s, session, progress));
 
-    private SessionState StartGaming(Settings s, bool automatic, IReadOnlyCollection<int> gamePids, IProgress<string>? progress)
+    /// <summary>
+    /// Vibe page: close just these apps now, with the same care as a switch (polite first, never the game,
+    /// Windows or separate apps). No mode change, no MCP, WSL or services. Returns the names closed.
+    /// </summary>
+    public Task<IReadOnlyList<string>> CloseAppsAsync(Settings s, IReadOnlyCollection<string> ids, IReadOnlyCollection<int> gamePids) =>
+        Task.Run<IReadOnlyList<string>>(() =>
+        {
+            var (all, plan) = PlanClosing(s.ForClosing(ids), automatic: false, gamePids);
+            CloseNow(all, plan, s.ForceCloseSeconds);
+            var names = plan.Close.Select(t => t.Entry.Name).ToList();
+            Log.Write($"Vibe page: closed [{string.Join(", ", names)}]");
+            return names;
+        });
+
+    /// <summary>Vibe page: open these apps now (those not already running), confirming Store apps really start.</summary>
+    public Task<ReopenResult> OpenAppsAsync(Settings s, IReadOnlyCollection<string> ids) =>
+        Task.Run(() =>
+        {
+            var toOpen = SwitchPlanner.PlanVibeLaunch(new SessionState(), Running(s), ids, LaunchTargets(s));
+            var result = Launch(s, toOpen, null);
+            Log.Write($"Vibe page: opened [{string.Join(", ", result.Opened)}]" +
+                      (result.Failed.Count > 0 ? $", couldn't open [{string.Join(", ", result.Failed)}]" : ""));
+            return result;
+        });
+
+    /// <summary>Snapshot, detect and plan a close, never reaching the game (or anything it started), Windows'
+    /// own processes, other users' processes or separate windowed apps.</summary>
+    private static (IReadOnlyList<ProcInfo> All, GamingPlan Plan) PlanClosing(Settings s, bool automatic, IReadOnlyCollection<int> gamePids)
     {
-        var session = new SessionState { Automatic = automatic, AvailBefore = ProcessQuery.AvailableRamBytes() };
         var all = ProcessSnapshot.Take();
         int self = Environment.ProcessId;
         int mySession = MySessionId();
         var games = gamePids.ToHashSet();
-        // Other users' processes are never ours to touch, even when VibeShift runs elevated.
         var detected = SwitchPlanner.Detect(all, Entries(s), ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
             p => p.SessionId != mySession || BlockList.IsBlocked(p.Name, ProcessQuery.GetImagePath(p.Pid), p.Pid, self, games));
-        // Never reach the game (or anything it started), Windows' own processes, or separate windowed apps.
         var gameTree = games.SelectMany(g => ProcessTree.Descendants(all, g)).Select(p => p.Pid).ToHashSet();
         var plan = SwitchPlanner.PlanGaming(all, detected, s, automatic, self, (node, root) =>
         {
@@ -59,6 +83,32 @@ public sealed class Switcher(JsonStore store)
             return BlockList.IsBlocked(node.Name, path, node.Pid, self, games)
                 || SwitchPlanner.IsSeparateApp(path, ProcessQuery.GetImagePath(root.Pid), ProcessQuery.HasVisibleWindow(node.Pid));
         });
+        return (all, plan);
+    }
+
+    /// <summary>Asks politely (where allowed), then ends what's left, parents first. Returns what was targeted.</summary>
+    private static List<ProcInfo> CloseNow(IReadOnlyList<ProcInfo> all, GamingPlan plan, int politeSeconds)
+    {
+        var byPid = new Dictionary<int, ProcInfo>();
+        foreach (var p in all) byPid.TryAdd(p.Pid, p);
+        var targets = SwitchPlanner.KillOrder(all, plan).Where(byPid.ContainsKey).Select(pid => byPid[pid]).ToList();
+        if (plan.Close.Count == 0) return targets;
+        if (plan.PoliteCloseRoots.Count > 0) PoliteClose(plan.PoliteCloseRoots, politeSeconds);
+        foreach (var info in targets) Kill(info);
+        return targets;
+    }
+
+    private static IReadOnlyList<Detected> Running(Settings s)
+    {
+        int mySession = MySessionId();
+        return SwitchPlanner.Detect(ProcessSnapshot.Take(), Entries(s), ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
+            p => p.SessionId != mySession);
+    }
+
+    private SessionState StartGaming(Settings s, bool automatic, IReadOnlyCollection<int> gamePids, IProgress<string>? progress)
+    {
+        var session = new SessionState { Automatic = automatic, AvailBefore = ProcessQuery.AvailableRamBytes() };
+        var (all, plan) = PlanClosing(s, automatic, gamePids);
 
         session.ClosedEntryIds.AddRange(plan.ClosedEntryIds);
         foreach (var target in plan.Close)
@@ -75,17 +125,12 @@ public sealed class Switcher(JsonStore store)
         session.WslShutDown = plan.ShutdownWsl;
         store.SaveSession(session); // before anything is closed, so a crash mid-switch can still switch back
 
-        var byPid = new Dictionary<int, ProcInfo>();
-        foreach (var p in all) byPid.TryAdd(p.Pid, p);
-
-        var targets = SwitchPlanner.KillOrder(all, plan).Where(byPid.ContainsKey).Select(pid => byPid[pid]).ToList();
         if (plan.Close.Count > 0)
         {
             int n = plan.Close.Count;
             progress?.Report($"Closing {n} app{(n == 1 ? "" : "s")}...");
-            if (plan.PoliteCloseRoots.Count > 0) PoliteClose(plan.PoliteCloseRoots, s.ForceCloseSeconds);
-            foreach (var info in targets) Kill(info);
         }
+        var targets = CloseNow(all, plan, s.ForceCloseSeconds);
 
         if (plan.ShutdownWsl)
         {
@@ -123,12 +168,17 @@ public sealed class Switcher(JsonStore store)
             Step("start services", () => Services.RunElevated("start", session.StoppedServices));
         }
 
-        int mySession = MySessionId();
-        IReadOnlyList<Detected> Running() => SwitchPlanner.Detect(ProcessSnapshot.Take(), Entries(s), ProcessQuery.GetImagePath,
-            ProcessQuery.GetCommandLine, p => p.SessionId != mySession);
-
         // What was closed for gaming, plus the user's vibe apps that aren't open yet.
-        var toOpen = SwitchPlanner.PlanVibeLaunch(session, Running(), s.VibeApps, LaunchTargets(s));
+        var toOpen = SwitchPlanner.PlanVibeLaunch(session, Running(s), s.VibeApps, LaunchTargets(s));
+        var result = Launch(s, toOpen, progress);
+        store.ClearSession();
+        Log.Write($"Vibe coding mode: opened {result.Opened.Count} of {toOpen.Count}");
+        return result;
+    }
+
+    /// <summary>Starts each app and confirms the ones handed to the shell (Store apps) really appear.</summary>
+    private static ReopenResult Launch(Settings s, IReadOnlyList<ClosedApp> toOpen, IProgress<string>? progress)
+    {
         var failed = new List<string>();
         var viaShell = new List<ClosedApp>();
         var known = Entries(s).Select(e => e.Id).ToHashSet();
@@ -155,7 +205,7 @@ public sealed class Switcher(JsonStore store)
         var missing = viaShell;
         while (missing.Count > 0)
         {
-            missing = SwitchPlanner.PlanReopen(new SessionState { Closed = missing.ToList() }, Running()).ToList();
+            missing = SwitchPlanner.PlanReopen(new SessionState { Closed = missing.ToList() }, Running(s)).ToList();
             if (missing.Count == 0 || DateTime.UtcNow >= deadline) break;
             Thread.Sleep(500);
         }
@@ -164,9 +214,6 @@ public sealed class Switcher(JsonStore store)
             failed.Add(app.Name);
             Log.Write($"Couldn't reopen {app.Name}: it didn't start within 10 s");
         }
-
-        store.ClearSession();
-        Log.Write($"Vibe coding mode: opened {toOpen.Count - failed.Count} of {toOpen.Count}");
         return new ReopenResult(toOpen.Select(a => a.Name).Where(n => !failed.Contains(n)).Distinct().ToList(), failed);
     }
 

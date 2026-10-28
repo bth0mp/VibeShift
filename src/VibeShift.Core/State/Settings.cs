@@ -49,6 +49,21 @@ public sealed class Settings
         SchemaVersion = 2;
     }
 
+    /// <summary>
+    /// A copy that switches on exactly <paramref name="ids"/> for closing, and nothing else: no MCP, no WSL, no
+    /// Extra boost. Used to close apps from the Vibe page without touching the user's gaming choices.
+    /// </summary>
+    public Settings ForClosing(IEnumerable<string> ids)
+    {
+        var copy = Clone();
+        copy.ExtraBoost = false;
+        copy.Toggles.Clear();
+        foreach (var e in AppCatalog.BuiltIn) copy.Toggles[e.Id] = false;
+        foreach (var path in CustomApps) copy.Toggles[AppCatalog.Custom(path).Id] = false;
+        foreach (var id in ids) copy.Toggles[id] = true;
+        return copy;
+    }
+
     /// <summary>An independent copy, so background work never reads a list the UI is editing.</summary>
     public Settings Clone() => JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(this))!;
 }
