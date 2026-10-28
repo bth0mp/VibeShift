@@ -14,7 +14,11 @@ public static class GameRules
     // app type from Steam's appinfo.vdf
     private static readonly Regex[] ExcludedFolders = Wildcards(
         "wallpaper_engine", "Steamworks Shared", "OBS Studio", "Soundpad", "Lossless Scaling", "Blender", "Godot*",
-        "RPG Maker*", "GameMaker*", "Aseprite", "Krita", "Substance 3D*", "Pixel Composer", "Bforartists");
+        "RPG Maker*", "GameMaker*", "Aseprite", "Krita", "Substance 3D*", "Pixel Composer", "Bforartists",
+        "Proton*", "Steam Linux Runtime*", "SteamVR");
+
+    /// <summary>A Steam install folder that holds a tool or creative app rather than a game.</summary>
+    public static bool IsNonGameFolder(string folderName) => ExcludedFolders.Any(rx => rx.IsMatch(folderName));
 
     private static Regex[] Wildcards(params string[] patterns) =>
         patterns.Select(p => new Regex("^" + Regex.Escape(p).Replace(@"\*", ".*") + "$", RegexOptions.IgnoreCase)).ToArray();

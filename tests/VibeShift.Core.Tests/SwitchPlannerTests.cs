@@ -336,6 +336,15 @@ public class SwitchPlannerTests
         Assert.True(settings.IsOn(AppCatalog.BuiltIn.Single(e => e.Id == "claude-desktop"))); // the real settings are untouched
     }
 
+    [Fact] // 1.4 game-time apps: an app you open for gaming is never closed for gaming
+    public void Game_time_apps_are_never_closed()
+    {
+        var all = new[] { P(1, 0, "Cursor"), P(2, 0, "claude") };
+        paths[2] = Desk;
+        settings.GameApps.Add("cursor");
+        Assert.Equal(new[] { "claude-desktop" }, Plan(all).Close.Select(c => c.Entry.Id));
+    }
+
     [Fact] // M12d: case-variant custom paths are one app, not a crash
     public void Custom_paths_differing_only_in_case_are_one_entry()
     {

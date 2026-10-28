@@ -77,12 +77,13 @@ public static class SwitchPlanner
         Func<ProcInfo, ProcInfo, bool> spare)
     {
         var selfChain = ProcessTree.Ancestors(all, selfPid);
-        // An app whose row is off survives even when a switched-on app started it.
-        var offRoots = detected.Where(d => !s.IsOn(d.Entry)).SelectMany(d => d.Roots).Select(r => r.Pid).ToHashSet();
+        // An app whose row is off, or that's opened for gaming, survives even when a switched-on app started it.
+        bool Closes(CatalogEntry e) => s.IsOn(e) && !s.GameApps.Contains(e.Id);
+        var offRoots = detected.Where(d => !Closes(d.Entry)).SelectMany(d => d.Roots).Select(r => r.Pid).ToHashSet();
         var close = new List<CloseTarget>();
         foreach (var d in detected)
         {
-            if (!s.IsOn(d.Entry) || d.Roots.Count == 0) continue;
+            if (!Closes(d.Entry) || d.Roots.Count == 0) continue;
             // VibeShift runs inside this app (e.g. started from its terminal): closing part of it would leave
             // a broken app we couldn't reopen, so leave the whole app alone.
             if (d.Roots.Any(r => selfChain.Contains(r.Pid))) continue;

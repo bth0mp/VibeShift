@@ -121,6 +121,23 @@ public sealed class StateTests : IDisposable
         Assert.Equal("OpenAI.ChatGPT_x!App", r.LaunchTargets["chatgpt"].Aumid);
     }
 
+    [Fact] // 1.4: game-time apps, the Play button's game and hotkeys default sensibly and survive a save
+    public void Play_settings_default_and_round_trip()
+    {
+        var s = Store().LoadSettings();
+        Assert.Empty(s.GameApps);
+        Assert.Null(s.PlayGame);
+        Assert.True(s.Hotkeys);
+        s.GameApps.Add("custom:c:\\discord\\discord.exe");
+        s.PlayGame = "steam:1422450";
+        s.Hotkeys = false;
+        Store().SaveSettings(s);
+        var r = Store().LoadSettings();
+        Assert.Equal(new[] { "custom:c:\\discord\\discord.exe" }, r.GameApps);
+        Assert.Equal("steam:1422450", r.PlayGame);
+        Assert.False(r.Hotkeys);
+    }
+
     [Fact] // a test or portable copy can keep its data apart, so it never touches the user's session
     public void Data_folder_can_be_redirected()
     {
