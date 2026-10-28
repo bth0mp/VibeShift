@@ -486,6 +486,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>A gaming session is in progress (session.json exists).</summary>
     public bool HasSession => session is not null;
 
+    public DateTime? SessionStartedUtc => session?.StartedUtc;
+
     /// <summary>What the last switch back opened, for the tray's welcome-back notification.</summary>
     public string LastReturnMessage { get; private set; } = "";
 

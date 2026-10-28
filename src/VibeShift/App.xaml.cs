@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -20,6 +21,8 @@ namespace VibeShift;
 public partial class App : Application
 {
     private readonly AutoModeTracker tracker = new(TimeSpan.FromSeconds(10));
+    private readonly IdleReminder reminder = new(TimeSpan.FromHours(2));
+    private Dictionary<int, string> loggedGames = [];
     private Mutex? instance;
     private EventWaitHandle? showSignal;
     private MainWindow? window;
@@ -106,6 +109,8 @@ public partial class App : Application
         vm.Switched += (mode, automatic) =>
         {
             tray.Update(mode);
+            reminder.Reset();
+            loggedGames = [];
             if (!automatic) tracker.ManualSwitch(mode, vm.CurrentGamePids, vm.Settings.ReturnWhenGameCloses);
             // Back from gaming with the window out of sight: say what opened. Nothing ever pops up while you play.
             if (mode == Mode.Coding && !window.IsVisible) tray.Notify("Back to vibe coding", vm.LastReturnMessage);
@@ -194,18 +199,29 @@ public partial class App : Application
         try
         {
             if (window.IsVisible) await vm.RefreshAsync();
-            // Watch for games starting (Auto mode) or, while gaming, for the game closing (Auto mode or
-            // "Switch back when my game closes").
+            // Watch for games starting (Auto mode) or, all through gaming mode, for the game closing (Auto mode or
+            // "Switch back when my game closes") and for gaming mode outliving it.
             var s = vm.Settings;
-            bool watchStart = s.AutoMode && vm.Mode == Mode.Coding;
-            bool watchEnd = vm.Mode == Mode.Gaming && (s.AutoMode || s.ReturnWhenGameCloses);
-            if ((watchStart || watchEnd) && watcher is { } w)
+            bool gaming = vm.Mode == Mode.Gaming;
+            if ((gaming || s.AutoMode) && watcher is { } w)
             {
-                var games = await Task.Run(() => w.Scan(ProcessSnapshot.Take()));
-                vm.CurrentGamePids = games;
+                var games = await Task.Run(() =>
+                {
+                    var snapshot = ProcessSnapshot.Take();
+                    var found = w.Scan(snapshot);
+                    return snapshot.Where(p => found.Contains(p.Pid)).ToDictionary(p => p.Pid, p => p.Name);
+                });
+                vm.CurrentGamePids = games.Keys.ToList();
+                LogGames(games);
                 // Automatic switches never show or activate the window; only the tray tooltip changes.
-                if (tracker.Update(games, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode) != AutoAction.None)
+                if (tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode) != AutoAction.None)
                     await vm.ToggleModeAsync(automatic: true);
+                else if (gaming && vm.SessionStartedUtc is { } since
+                         && reminder.Due(games.Count > 0, AcceptsNotifications(), since, DateTime.UtcNow))
+                {
+                    Log.Write("Reminded: still in gaming mode, no game for 2 hours");
+                    tray?.Notify("Still in gaming mode", "No game has run for 2 hours. Click here, then Back to vibe coding to reopen your apps.");
+                }
             }
         }
         catch (Exception ex)
@@ -245,6 +261,20 @@ public partial class App : Application
 
     [DllImport("kernel32.dll")]
     private static extern bool SetProcessWorkingSetSize(IntPtr process, nint min, nint max);
+
+    /// <summary>Games coming and going, so "why didn't it switch back?" has an answer in the log.</summary>
+    private void LogGames(Dictionary<int, string> games)
+    {
+        foreach (var g in games.Where(g => !loggedGames.ContainsKey(g.Key))) Log.Write("Game running: " + g.Value);
+        foreach (var g in loggedGames.Where(g => !games.ContainsKey(g.Key))) Log.Write("Game closed: " + g.Value);
+        loggedGames = games;
+    }
+
+    /// <summary>No full-screen app, presentation or quiet hours right now (QUNS_ACCEPTS_NOTIFICATIONS).</summary>
+    private static bool AcceptsNotifications() => SHQueryUserNotificationState(out int state) == 0 && state == 5;
+
+    [DllImport("shell32.dll")]
+    private static extern int SHQueryUserNotificationState(out int state);
 
     private void ShowWindow()
     {

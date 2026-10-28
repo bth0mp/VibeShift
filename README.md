@@ -37,6 +37,7 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 - **Switch back when my game closes** (on by default) does this for you about 10 seconds after your game exits, even if you clicked Start gaming yourself. A Windows notification tells you what opened.
 - Microsoft Store apps (like Claude and ChatGPT) reopen through Windows, the same way the Start menu opens them.
 - If VibeShift crashes or your PC restarts in the middle of a game, it opens in gaming mode next time, so **Back to vibe coding** still knows what to reopen.
+- Still in gaming mode 2 hours after your last game (the setting is off, say, or you played something VibeShift doesn't recognise)? A Windows notification reminds you, once. It waits until nothing is running full screen.
 
 **Play button**
 
@@ -135,7 +136,7 @@ Off by default. When it's on, **Start gaming** also pauses two Windows backgroun
   - `settings.json`: your choices.
   - `session.json`: what to reopen. It only exists while you're in gaming mode.
   - `stats.json`: when your last 90 days of gaming sessions started and ended, and the RAM each one freed.
-  - `vibeshift.log`: a short log, handy if you open an issue.
+  - `vibeshift.log`: a short log of switches and the games VibeShift saw start and close, handy if you open an issue.
 
 ## Build from source
 
@@ -147,6 +148,8 @@ dotnet publish src/VibeShift -c Release -r win-x64 --self-contained -p:PublishSi
 ```
 
 The exe ends up in `publish\VibeShift.exe`. It isn't compressed on purpose: a compressed single-file build is half the download but uses about twice the RAM, and saving RAM is the point.
+
+Every push to `main` is built and tested on GitHub Actions, and each run's exe can be downloaded from its Actions page for 14 days.
 
 ## License
 
