@@ -42,6 +42,10 @@ public sealed class UpdateTests : IDisposable
         Assert.Null(Updater.Parse(ReleaseJson("nightly", "sha256:ab")));
     }
 
+    [Fact] // only this repo's own release downloads are ever fetched
+    public void Release_hosted_anywhere_else_is_ignored() =>
+        Assert.Null(Updater.Parse(ReleaseJson("v1.5.0", "sha256:ab").Replace("https://github.com/bth0mp/VibeShift/releases/download/", "https://evil.example/")));
+
     [Theory]
     [InlineData("1.5.0", "1.4.0.0", true)]
     [InlineData("1.4.0", "1.4.0.0", false)] // the assembly's 4-part version is the same release

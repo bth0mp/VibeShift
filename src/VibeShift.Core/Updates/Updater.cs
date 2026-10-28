@@ -10,6 +10,9 @@ public static class Updater
 {
     public const string LatestUrl = "https://api.github.com/repos/bth0mp/VibeShift/releases/latest";
 
+    /// <summary>The only place an update is ever downloaded from: this repo's own releases.</summary>
+    private const string DownloadPrefix = "https://github.com/bth0mp/VibeShift/releases/download/";
+
     public static async Task<Release?> CheckAsync(HttpClient http, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, LatestUrl);
@@ -30,8 +33,9 @@ public static class Updater
         {
             if (asset.GetProperty("name").GetString() != "VibeShift.exe") continue;
             var digest = asset.TryGetProperty("digest", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString()! : "";
-            if (!digest.StartsWith("sha256:", StringComparison.Ordinal)) return null;
-            return new Release(version, asset.GetProperty("browser_download_url").GetString()!, digest[7..], root.GetProperty("html_url").GetString()!);
+            var url = asset.GetProperty("browser_download_url").GetString() ?? "";
+            if (!digest.StartsWith("sha256:", StringComparison.Ordinal) || !url.StartsWith(DownloadPrefix, StringComparison.Ordinal)) return null;
+            return new Release(version, url, digest[7..], root.GetProperty("html_url").GetString()!);
         }
         return null;
     }
