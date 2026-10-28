@@ -42,8 +42,17 @@ public sealed class AutoModeTracker(TimeSpan backDelay)
         return AutoAction.BackToCoding;
     }
 
-    /// <summary>After a crash or reboot mid auto-session, keep the right to switch back by itself.</summary>
-    public void ResumeAutoSession(DateTime nowUtc) => Arm(nowUtc);
+    /// <summary>
+    /// Picks up a gaming session found on startup (after a crash, reboot or update). One Auto mode started had
+    /// a game, so it switches back once things are quiet. One started by hand only switches back after a game
+    /// is seen and closes (if the setting is on): with nothing running it might be about to start, or be a
+    /// game VibeShift can't recognise.
+    /// </summary>
+    public void Resume(bool automatic, bool returnWhenGameCloses, DateTime nowUtc)
+    {
+        if (automatic) Arm(nowUtc);
+        else ManualSwitch(Mode.Gaming, [], returnWhenGameCloses);
+    }
 
     public void ManualSwitch(Mode newMode, IReadOnlyCollection<int> gamePidsNow, bool returnWhenGameCloses = false)
     {

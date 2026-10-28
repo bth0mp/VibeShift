@@ -40,10 +40,30 @@ public class AutoModeTrackerTests
         Assert.Equal(AutoAction.StartGaming, T.Update(new[] { 7, 9 }, Mode.Coding, t0.AddSeconds(6)));
     }
 
+    [Fact] // 1.4: a session started by hand, resumed after a restart, waits to see a game before switching back
+    public void Resumed_manual_session_waits_for_a_game_before_switching_back()
+    {
+        T.Resume(automatic: false, returnWhenGameCloses: true, t0);
+        Assert.Equal(AutoAction.None, T.Update(None, Mode.Gaming, t0.AddMinutes(5)));   // no game yet: stay in gaming mode
+        Assert.Equal(AutoAction.None, T.Update(new[] { 7 }, Mode.Gaming, t0.AddMinutes(6)));
+        Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddMinutes(6).AddSeconds(11)));
+    }
+
+    [Fact] // 1.4: with "switch back when my game closes" off, a resumed manual session never switches back by itself
+    public void Resumed_manual_session_without_return_setting_stays() =>
+        Assert.Equal(AutoAction.None, ResumedThenQuiet(automatic: false, returnWhenGameCloses: false));
+
+    private AutoAction ResumedThenQuiet(bool automatic, bool returnWhenGameCloses)
+    {
+        T.Resume(automatic, returnWhenGameCloses, t0);
+        T.Update(new[] { 7 }, Mode.Gaming, t0.AddSeconds(1));
+        return T.Update(None, Mode.Gaming, t0.AddSeconds(30));
+    }
+
     [Fact] // M5: after a crash mid auto-session, Auto mode still switches back by itself
     public void Resumed_auto_session_switches_back_after_quiet_delay()
     {
-        T.ResumeAutoSession(t0);
+        T.Resume(automatic: true, returnWhenGameCloses: false, t0);
         Assert.Equal(AutoAction.None, T.Update(None, Mode.Gaming, t0.AddSeconds(5)));
         Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddSeconds(11)));
     }

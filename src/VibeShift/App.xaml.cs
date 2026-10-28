@@ -80,7 +80,7 @@ public partial class App : Application
         // A leftover session.json means we crashed or rebooted mid-game: the view model opens in Gaming mode.
         vm = new MainViewModel(store, settings);
         // Mid-game crash or reboot: keep switching back by itself once the game is gone.
-        if (vm.HasSession && (vm.SessionIsAutomatic || settings.ReturnWhenGameCloses)) tracker.ResumeAutoSession(DateTime.UtcNow);
+        if (vm.HasSession) tracker.Resume(vm.SessionIsAutomatic, settings.ReturnWhenGameCloses, DateTime.UtcNow);
         window = new MainWindow(vm);
         window.Closing += (_, ev) =>
         {
