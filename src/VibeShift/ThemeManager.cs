@@ -20,16 +20,19 @@ public static class ThemeManager
 
     public static bool IsDark { get; private set; }
 
-    public static void Apply(ThemeChoice choice)
+    /// <param name="highContrast">Null follows Windows; the offscreen renderer forces it either way.</param>
+    public static void Apply(ThemeChoice choice, bool? highContrast = null)
     {
         current = choice;
-        IsDark = choice switch
+        // Windows High Contrast wins over the app's own theme: its colours are the user's, chosen to be readable.
+        bool contrast = highContrast ?? SystemParameters.HighContrast;
+        IsDark = contrast ? Luminance(SystemColors.WindowColor) < 0.5 : choice switch
         {
             ThemeChoice.Dark => true,
             ThemeChoice.Light => false,
             _ => SystemIsDark(),
         };
-        var name = IsDark ? "Dark" : "Light";
+        var name = contrast ? "HighContrast" : IsDark ? "Dark" : "Light";
         Application.Current.Resources.MergedDictionaries[0] =
             new ResourceDictionary { Source = new Uri($"pack://application:,,,/Themes/{name}.xaml") };
 
@@ -38,8 +41,10 @@ public static class ThemeManager
             hooked = true;
             SystemEvents.UserPreferenceChanged += (_, e) =>
             {
-                if (current == ThemeChoice.System && e.Category == UserPreferenceCategory.General)
-                    Application.Current.Dispatcher.BeginInvoke(() => Apply(ThemeChoice.System));
+                // Turning High Contrast on or off, or picking another contrast theme, arrives as Accessibility or Color.
+                if (e.Category is UserPreferenceCategory.Accessibility or UserPreferenceCategory.Color
+                    || (current == ThemeChoice.System && e.Category == UserPreferenceCategory.General))
+                    Application.Current.Dispatcher.BeginInvoke(() => Apply(current));
             };
         }
         foreach (Window w in Application.Current.Windows) ApplyChrome(w);
@@ -62,6 +67,8 @@ public static class ThemeManager
         Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1) is 0;
 
     private static int ColorRef(Color c) => c.R | (c.G << 8) | (c.B << 16);
+
+    private static double Luminance(Color c) => (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255;
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);

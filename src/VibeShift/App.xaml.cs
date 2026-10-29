@@ -356,7 +356,7 @@ public partial class App : Application
     /// <summary>--screenshot: renders the window with the mockup's sample data to a 2x PNG and exits. Touches no processes.</summary>
     private void Screenshot(string png, string theme, string demoMode, string page, bool bottom)
     {
-        ThemeManager.Apply(theme == "light" ? ThemeChoice.Light : ThemeChoice.Dark);
+        ThemeManager.Apply(theme == "light" ? ThemeChoice.Light : ThemeChoice.Dark, highContrast: theme == "contrast");
         var demoVm = new MainViewModel(new JsonStore(Path.GetTempPath()), new Settings(), demo: true);
         demoVm.LoadDemo(demoMode == "gaming" ? Mode.Gaming : Mode.Coding);
         var w = new MainWindow(demoVm)

@@ -151,7 +151,8 @@
                                         <DockPanel>
                                             <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsOpen}"
                                                       IsEnabled="{Binding CanSwitch}" VerticalAlignment="Center"
-                                                      AutomationProperties.Name="{Binding Name, StringFormat='{}{0} open'}" />
+                                                      AutomationProperties.Name="{Binding Name, StringFormat='{}{0} open'}"
+                                                      AutomationProperties.HelpText="{Binding Status}" />
                                             <Border Width="22" Height="22" CornerRadius="6" Background="{Binding BadgeBrush}">
                                                 <TextBlock Text="{Binding BadgeLetter}" Foreground="White" FontSize="11" FontWeight="Bold"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -254,7 +255,8 @@
                 <Border Style="{StaticResource Tile}">
                     <DockPanel>
                         <ListBox DockPanel.Dock="Right" Style="{StaticResource Segmented}" ItemsSource="{Binding ThemeOptions}"
-                                 DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Theme}" />
+                                 DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Theme}"
+                                 AutomationProperties.Name="Theme" />
                         <TextBlock Text="Theme" VerticalAlignment="Center" />
                     </DockPanel>
                 </Border>
@@ -293,7 +295,7 @@
                                 <DataTemplate>
                                     <DockPanel Margin="0,3,0,0">
                                         <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Click="RemoveGame_Click"
-                                                ToolTip="Remove" AutomationProperties.Name="Remove game" />
+                                                ToolTip="Remove" AutomationProperties.Name="{Binding StringFormat='Remove {0}'}" />
                                         <TextBlock Text="{Binding}" ToolTip="{Binding}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="12" />
                                     </DockPanel>
                                 </DataTemplate>
@@ -309,7 +311,8 @@
                         <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,9"
                                    Text="When you click Start gaming, apps get this long to close on their own. Auto mode closes them right away." />
                         <ListBox Style="{StaticResource Segmented}" HorizontalAlignment="Left" ItemsSource="{Binding ForceCloseOptions}"
-                                 ItemStringFormat="{}{0} s" SelectedItem="{Binding ForceCloseSeconds}" />
+                                 ItemStringFormat="{}{0} s" SelectedItem="{Binding ForceCloseSeconds}"
+                                 AutomationProperties.Name="Force-close after" />
                     </StackPanel>
                 </Border>
 
@@ -494,7 +497,7 @@
                               AutomationProperties.Name="{Binding Name, StringFormat='Open {0} when vibing'}"
                               Visibility="{Binding CanVibe, Converter={StaticResource Visible}}" />
                     <Button Grid.Column="6" Style="{StaticResource IconButton}" Content="&#xE711;" Width="22" Click="RemoveApp_Click"
-                            ToolTip="Remove" AutomationProperties.Name="Remove app"
+                            ToolTip="Remove" AutomationProperties.Name="{Binding Name, StringFormat='Remove {0}'}"
                             Visibility="{Binding IsCustom, Converter={StaticResource Visible}}" />
                 </Grid>
             </Border>

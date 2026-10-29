@@ -1,0 +1,21 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Windows High Contrast: every key comes from the user's own contrast theme (read again whenever it changes).
+         Flat surfaces, text-coloured borders, the system highlight for accents and on-switches. -->
+    <x:Static x:Key="BgColor" Member="SystemColors.WindowColor" />
+    <x:Static x:Key="TextColor" Member="SystemColors.WindowTextColor" />
+    <x:Static x:Key="BgBrush" Member="SystemColors.WindowBrush" />
+    <x:Static x:Key="SurfaceBrush" Member="SystemColors.WindowBrush" />
+    <x:Static x:Key="RaisedBrush" Member="SystemColors.WindowBrush" />
+    <x:Static x:Key="BorderBrush" Member="SystemColors.WindowTextBrush" />
+    <x:Static x:Key="TextBrush" Member="SystemColors.WindowTextBrush" />
+    <x:Static x:Key="MutedBrush" Member="SystemColors.WindowTextBrush" />
+    <x:Static x:Key="AccentBrush" Member="SystemColors.HighlightBrush" />
+    <x:Static x:Key="HighlightBrush" Member="SystemColors.HighlightBrush" />
+    <x:Static x:Key="OnAccentBrush" Member="SystemColors.HighlightTextBrush" />
+    <x:Static x:Key="ToggleOffBrush" Member="SystemColors.WindowTextBrush" />
+    <x:Static x:Key="CodingDotBrush" Member="SystemColors.HighlightBrush" />
+    <x:Static x:Key="RunningTextBrush" Member="SystemColors.WindowTextBrush" />
+    <x:Static x:Key="GamingDotBrush" Member="SystemColors.HighlightBrush" />
+    <x:Static x:Key="ButtonGradientBrush" Member="SystemColors.HighlightBrush" />
+</ResourceDictionary>

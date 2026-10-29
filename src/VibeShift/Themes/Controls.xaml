@@ -25,7 +25,7 @@
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentBrush}" />
                             <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                            <Setter TargetName="Knob" Property="Fill" Value="White" />
+                            <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource OnAccentBrush}" />
                             <Setter TargetName="Knob" Property="Width" Value="13" />
                             <Setter TargetName="Knob" Property="Height" Value="13" />
                             <Setter TargetName="Knob" Property="Margin" Value="2,0" />
@@ -45,7 +45,7 @@
 
     <!-- Purple gradient call to action with a soft glow -->
     <Style x:Key="PrimaryButton" TargetType="Button">
-        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Height" Value="46" />
