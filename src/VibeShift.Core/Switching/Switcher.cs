@@ -180,15 +180,19 @@ public sealed class Switcher(JsonStore store)
     private ReopenResult BackToCoding(Settings s, SessionState session, IProgress<string>? progress)
     {
         if (session.PowerPlanBefore is { } before) Step("restore power plan", () => PowerPlans.SetActive(before));
+
+        // What was closed for gaming, plus the user's vibe apps that aren't open yet.
+        var toOpen = SwitchPlanner.PlanVibeLaunch(session, Running(s), s.VibeApps, LaunchTargets(s));
+        var result = Launch(s, toOpen, progress);
+
+        // After the apps: restarting services waits on a UAC prompt, and a switch back after the game closes may
+        // happen with nobody at the PC. session.json still lists the services until the end, so a crash here
+        // restarts them next time.
         if (session.StoppedServices.Count > 0)
         {
             progress?.Report("Restarting Windows services...");
             Step("start services", () => Services.RunElevated("start", session.StoppedServices));
         }
-
-        // What was closed for gaming, plus the user's vibe apps that aren't open yet.
-        var toOpen = SwitchPlanner.PlanVibeLaunch(session, Running(s), s.VibeApps, LaunchTargets(s));
-        var result = Launch(s, toOpen, progress);
         Step("save stats", () => store.AddStat(new GamingRecord(session.StartedUtc, DateTime.UtcNow, session.Freed), DateTime.UtcNow));
         store.ClearSession();
         Log.Write($"Vibe coding mode: opened {result.Opened.Count} of {toOpen.Count}");

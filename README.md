@@ -126,7 +126,7 @@ Automatic switches never open the VibeShift window or pop anything up over your 
 
 ## Extra boost
 
-Off by default. When it's on, **Start gaming** also pauses two Windows background services: SysMain (memory prefetching) and Windows Search indexing. **Back to vibe coding** restarts them. Pausing and restarting services needs admin permission, so Windows asks when you click Start gaming and again when you switch back. Auto mode skips this step so nothing pops up mid-game.
+Off by default. When it's on, **Start gaming** also pauses two Windows background services: SysMain (memory prefetching) and Windows Search indexing. **Back to vibe coding** restarts them. Pausing and restarting services needs admin permission, so Windows asks when you click Start gaming and again when you switch back (after your apps have reopened, so they never wait on the prompt). Auto mode skips this step so nothing pops up mid-game.
 
 ## Privacy and permissions
 
