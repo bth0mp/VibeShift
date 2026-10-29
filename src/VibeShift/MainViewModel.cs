@@ -532,8 +532,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void RemoveApp(AppRow row)
     {
-        Settings.CustomApps.RemoveAll(p => AppCatalog.Custom(p).Id == row.Id);
-        Settings.Toggles.Remove(row.Id);
+        Settings.RemoveCustomApp(row.Id);
         rows.Remove(row.Id);
         SaveSettings();
         _ = RefreshAsync();

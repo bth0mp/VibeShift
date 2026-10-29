@@ -62,6 +62,25 @@ public sealed class Settings
         if (SchemaVersion < 2 && Toggles.TryGetValue("copilot", out var on) && !Toggles.ContainsKey("m365copilot"))
             Toggles["m365copilot"] = on;
         SchemaVersion = 2;
+        DropOrphans(); // 1.6.0 and earlier left a removed app's choices behind
+    }
+
+    /// <summary>Removes a custom app and every choice made for it: close toggle, vibe app, game app, how to start it.</summary>
+    public void RemoveCustomApp(string id)
+    {
+        CustomApps.RemoveAll(p => AppCatalog.Custom(p).Id == id);
+        Toggles.Remove(id);
+        DropOrphans();
+    }
+
+    // A vibe or game app with no row left to untick would be launched on every switch, even when already open.
+    private void DropOrphans()
+    {
+        var custom = CustomApps.Select(p => AppCatalog.Custom(p).Id).ToHashSet();
+        bool Orphan(string id) => id.StartsWith("custom:", StringComparison.Ordinal) && !custom.Contains(id);
+        VibeApps.RemoveAll(Orphan);
+        GameApps.RemoveAll(Orphan);
+        foreach (var id in LaunchTargets.Keys.Where(Orphan).ToList()) LaunchTargets.Remove(id);
     }
 
     /// <summary>

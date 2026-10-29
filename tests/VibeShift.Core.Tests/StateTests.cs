@@ -83,6 +83,40 @@ public sealed class StateTests : IDisposable
         Assert.True(File.Exists(Path.Combine(dir, "session.json.bad")));
     }
 
+    [Fact] // audit A2: a removed app kept launching as a vibe/game app, with no row left to untick
+    public void Removing_a_custom_app_forgets_every_choice_for_it()
+    {
+        const string obs = @"C:\x\obs64.exe", keep = @"C:\x\keep.exe";
+        string id = AppCatalog.Custom(obs).Id, keepId = AppCatalog.Custom(keep).Id;
+        var s = new Settings();
+        s.CustomApps.AddRange([obs, keep]);
+        s.Toggles[id] = true;
+        s.VibeApps.AddRange([id, keepId, "claude-desktop"]);
+        s.GameApps.Add(id);
+        s.LaunchTargets[id] = new ClosedApp(id, "OBS", obs, null);
+
+        s.RemoveCustomApp(id);
+
+        Assert.Equal(new[] { keep }, s.CustomApps);
+        Assert.Equal(new[] { keepId, "claude-desktop" }, s.VibeApps);
+        Assert.Empty(s.GameApps);
+        Assert.Empty(s.LaunchTargets);
+        Assert.False(s.Toggles.ContainsKey(id));
+    }
+
+    [Fact] // audit A2: settings an older version left behind are repaired on load
+    public void Leftovers_of_a_removed_custom_app_are_dropped_on_load()
+    {
+        File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {"VibeApps": ["custom:c:\\x\\obs64.exe", "claude-desktop"], "GameApps": ["custom:c:\\x\\obs64.exe"],
+             "LaunchTargets": {"custom:c:\\x\\obs64.exe": {"EntryId": "custom:c:\\x\\obs64.exe", "Name": "OBS", "ExePath": "C:\\x\\obs64.exe", "Aumid": null}}}
+            """);
+        var s = Store().LoadSettings();
+        Assert.Equal(new[] { "claude-desktop" }, s.VibeApps);
+        Assert.Empty(s.GameApps);
+        Assert.Empty(s.LaunchTargets);
+    }
+
     [Fact] // 1.0.1 review #1: 1.0.0 covered M365 Copilot under the Copilot toggle; an upgrade keeps that choice
     public void Upgraded_copilot_choice_carries_over_to_m365_copilot()
     {
@@ -128,6 +162,7 @@ public sealed class StateTests : IDisposable
         Assert.Empty(s.GameApps);
         Assert.Null(s.PlayGame);
         Assert.True(s.Hotkeys);
+        s.CustomApps.Add("C:\\discord\\discord.exe"); // a game app is a row the user has
         s.GameApps.Add("custom:c:\\discord\\discord.exe");
         s.PlayGame = "steam:1422450";
         s.Hotkeys = false;
