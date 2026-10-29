@@ -1,4 +1,5 @@
 using VibeShift.Core.Catalog;
+using VibeShift.Core.Games;
 using VibeShift.Core.Processes;
 using VibeShift.Core.State;
 
@@ -97,10 +98,13 @@ public static class SwitchPlanner
             if (d.Roots.Any(r => selfChain.Contains(r.Pid))) continue;
             // Parents first: a supervisor that's already dead can't respawn the children killed after it.
             // The row's own processes are never spared (Docker Desktop's window under its backend isn't a separate app).
+            // A game store it started (Steam from a steam:// link, often windowless in the tray) survives with
+            // everything under it: closing one can take the running game down with it.
             var own = d.Matched.Select(m => m.Pid).ToHashSet();
             var kill = d.Roots
                 .SelectMany(r => ProcessTree.Descendants(all, r.Pid,
-                    node => offRoots.Contains(node.Pid) || (!own.Contains(node.Pid) && spare(node, r))).Reverse())
+                    node => offRoots.Contains(node.Pid)
+                            || (!own.Contains(node.Pid) && (GameRules.IsGameLauncher(node.Name) || spare(node, r)))).Reverse())
                 .Select(p => p.Pid)
                 .Distinct()
                 .ToList();

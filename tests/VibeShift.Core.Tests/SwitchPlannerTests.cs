@@ -65,6 +65,14 @@ public class SwitchPlannerTests
         Assert.False(SwitchPlanner.SharesJobWithApp([], 300, detected)); // not in a job
     }
 
+    [Fact] // audit A3: Steam started from Claude (or a steam:// link), minimised to the tray, with the game under it
+    public void Game_launcher_under_a_closed_app_survives_with_everything_under_it()
+    {
+        var all = new[] { P(1, 0, "claude"), P(2, 1, "steam"), P(3, 2, "steamwebhelper"), P(4, 2, "deadlock"), P(5, 1, "claude") };
+        paths[1] = paths[5] = Desk;
+        Assert.Equal(new[] { 1, 5 }, Plan(all).Close.Single().KillPids);
+    }
+
     [Fact] // review C1: the game and Windows processes are never killed, nor anything under them
     public void Kill_walk_skips_spared_processes_and_their_children()
     {
