@@ -70,6 +70,28 @@ public static class ProcessQuery
         }
     }
 
+    /// <summary>
+    /// PIDs in this process's own job object; empty when it isn't in one. Innermost job only: a launcher that wraps its
+    /// child in a job of its own (dotnet run) hides the job around it.
+    /// </summary>
+    public static IReadOnlyList<int> MyJobPids()
+    {
+        // ponytail: room for 8192 PIDs; a bigger job reads as "not in one" (ERROR_MORE_DATA), so nothing moves
+        int length = 8 + 8 * 8192;
+        IntPtr buf = Marshal.AllocHGlobal(length);
+        try
+        {
+            if (!Win32.QueryInformationJobObject(IntPtr.Zero, Win32.JobObjectBasicProcessIdList, buf, length, IntPtr.Zero)) return [];
+            var pids = new int[Marshal.ReadInt32(buf, 4)]; // NumberOfProcessIdsInList, then ULONG_PTRs
+            for (int i = 0; i < pids.Length; i++) pids[i] = (int)Marshal.ReadInt64(buf, 8 + 8 * i);
+            return pids;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buf);
+        }
+    }
+
     public static long AvailableRamBytes() => (long)MemoryStatus().ullAvailPhys;
 
     public static long TotalRamBytes() => (long)MemoryStatus().ullTotalPhys;

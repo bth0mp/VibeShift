@@ -53,6 +53,18 @@ public class SwitchPlannerTests
         Assert.Equal(10, plan.EstimatedBytes); // only the MCP server is counted
     }
 
+    [Fact] // started from Claude Code's terminal: that shell (555) has exited, so only the shared job gives it away
+    public void Sharing_a_job_with_an_app_it_closes_is_noticed()
+    {
+        var all = new[] { P(6, 0, "claude"), P(7, 6, "node"), P(300, 555, "VibeShift"), P(400, 0, "explorer") };
+        paths[6] = Cli;
+        cmds[7] = "node mcp-server-x";
+        var detected = Detect(all);
+        Assert.True(SwitchPlanner.SharesJobWithApp([6, 7, 300], 300, detected));
+        Assert.False(SwitchPlanner.SharesJobWithApp([300, 400], 300, detected)); // a job of its own, from Explorer
+        Assert.False(SwitchPlanner.SharesJobWithApp([], 300, detected)); // not in a job
+    }
+
     [Fact] // review C1: the game and Windows processes are never killed, nor anything under them
     public void Kill_walk_skips_spared_processes_and_their_children()
     {

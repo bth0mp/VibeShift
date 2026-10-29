@@ -64,6 +64,14 @@ public static class SwitchPlanner
         return result;
     }
 
+    /// <summary>
+    /// True when VibeShift shares a job object with an app it may close: it was started from that app's terminal
+    /// (Claude Code, an AI app's shell). Closing the app ends the job and VibeShift with it, mid-switch. The parent
+    /// chain can't tell, because the shell that started VibeShift has usually exited by then.
+    /// </summary>
+    public static bool SharesJobWithApp(IReadOnlyCollection<int> jobPids, int selfPid, IReadOnlyList<Detected> detected) =>
+        detected.SelectMany(d => d.Matched).Any(p => p.Pid != selfPid && jobPids.Contains(p.Pid));
+
     /// <param name="spare">
     /// (process, root it was found under) -> true to keep that process and everything under it alive:
     /// the game, Windows' own processes, separate apps the target merely launched.

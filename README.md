@@ -107,7 +107,7 @@ Closing the window keeps VibeShift running as a small icon by the clock, with a 
 - **Browsers and your tabs.** The Web browsers row ends the browser rather than asking it to close, because that's what makes it restore every tab when it reopens. Want to keep a music tab playing while you game? Leave this row off and let the browser sleep idle tabs instead: Firefox does this on its own when memory runs low, Chrome has **Memory Saver**, Edge has **Sleeping tabs**, and the free **Auto Tab Discard** extension lets you choose exactly what stays awake.
 - **What it never closes.** Windows' own processes, the game you're playing (or anything it started), and VibeShift itself.
 - **Separate apps stay open.** A browser opened from a link in Claude, or an app whose row you switched off, survives even if a closed app started it.
-- **Started VibeShift from an app's terminal?** Then that app is left running, since VibeShift can't close part of it and reopen it afterwards.
+- **Started VibeShift from an app's terminal?** If that's an app VibeShift closes (Claude Code, an AI app's built-in terminal), VibeShift restarts itself through Windows first. Closing the app for gaming then can't take VibeShift down with it. If it can't move out (it was started with `--tray`, say), that app is left running instead, since VibeShift can't close part of it and reopen it afterwards.
 
 ## Auto mode
 

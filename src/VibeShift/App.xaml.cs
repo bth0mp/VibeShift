@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using VibeShift.Core.Catalog;
 using VibeShift.Core.Games;
 using VibeShift.Core.Processes;
 using VibeShift.Core.State;
@@ -31,6 +32,7 @@ public partial class App : Application
     private Hotkeys? hotkeys;
     private GameWatcher? watcher;
     private bool quitting, ticking, started;
+    private const string InstanceName = @"Local\VibeShift.Instance";
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -50,12 +52,21 @@ public partial class App : Application
             return;
         }
 
+        // Started from the terminal of an app VibeShift closes (Claude Code, an AI app's shell)? Closing that app for
+        // gaming would end its job and VibeShift with it, mid-switch, and the app's file virtualization would hide the
+        // user's real settings. Hand over to a copy Explorer starts outside it.
+        if (HandedOverToExplorer())
+        {
+            Shutdown();
+            return;
+        }
+
         // One instance: a second launch just brings the first window forward.
         // A copy with its own data folder (VIBESHIFT_DATA) is its own instance, so test runs never stop the real one.
         string scope = Environment.GetEnvironmentVariable(JsonStore.DataDirVariable) is { Length: > 0 } d
             ? "." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(d.ToLowerInvariant())))[..12]
             : "";
-        instance = new Mutex(true, @"Local\VibeShift.Instance" + scope, out bool first);
+        instance = new Mutex(true, InstanceName + scope, out bool first);
         showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\VibeShift.Show" + scope);
         if (!first)
         {
@@ -135,6 +146,50 @@ public partial class App : Application
         };
         updateTimer.Start();
         started = true;
+    }
+
+    /// <summary>
+    /// Restarts VibeShift through Explorer when it shares a job with an app it may close. True once the new copy (or
+    /// one already running) holds the single-instance lock; false to carry on here.
+    /// </summary>
+    private static bool HandedOverToExplorer()
+    {
+        // ponytail: Explorer passes on neither VIBESHIFT_DATA nor arguments, so test copies and --tray starts stay put;
+        // a temporary .lnk could carry the arguments if tray starts from a terminal ever matter
+        if (Environment.GetEnvironmentVariable(JsonStore.DataDirVariable) is { Length: > 0 }
+            || Environment.GetCommandLineArgs().Length > 1 || Environment.ProcessPath is not { } exe) return false;
+        if (Mutex.TryOpenExisting(InstanceName, out var running))
+        {
+            running.Dispose();
+            return false; // a copy is already running: this one just shows it, as usual
+        }
+        try
+        {
+            var job = ProcessQuery.MyJobPids();
+            if (job.Count == 0) return false;
+            var inJob = ProcessSnapshot.Take().Where(p => job.Contains(p.Pid)).ToList();
+            var apps = SwitchPlanner.Detect(inJob, AppCatalog.BuiltIn, ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine, _ => false);
+            if (!SwitchPlanner.SharesJobWithApp(job, Environment.ProcessId, apps)) return false;
+            // Held during the hand-over, so the copy Explorer starts never hands over in turn.
+            using var handover = new EventWaitHandle(false, EventResetMode.ManualReset, @"Local\VibeShift.Handover", out bool mine);
+            if (!mine) return false;
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{exe}\"") { UseShellExecute = false })?.Dispose();
+            // Explorer always "succeeds": leave only once the new copy has taken the lock.
+            for (int i = 0; i < 50; i++)
+            {
+                Thread.Sleep(200);
+                if (Mutex.TryOpenExisting(InstanceName, out var started))
+                {
+                    started.Dispose();
+                    return true;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // a failed check must never stop VibeShift starting: carry on here, as before
+        }
+        return false;
     }
 
     /// <summary>An update was swapped in: hand the single-instance lock to the new exe and leave.</summary>
