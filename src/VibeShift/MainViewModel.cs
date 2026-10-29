@@ -114,7 +114,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (Mode == Mode.Coding) Log.Write("Play: couldn't switch to gaming mode first; launching anyway");
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(game.LaunchUri) { UseShellExecute = true })?.Dispose();
+            System.Diagnostics.Process.Start(game.ToStartInfo())?.Dispose();
             Log.Write($"Play: launched {game.Name}");
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)

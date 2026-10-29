@@ -10,12 +10,12 @@ public static class GameRules
         "CrashReport*", "*CrashHandler*", "EasyAntiCheat*", "BEService*", "vcredist*", "DXSETUP", "*Setup*",
         "*Installer*", "wallpaper32", "wallpaper64");
 
-    // ponytail: name list of non-game Steam apps (tools, engines, creative apps); upgrade path is reading the
-    // app type from Steam's appinfo.vdf
+    // ponytail: name list of non-game Steam apps (tools, engines, creative apps, desktop companions that run all
+    // day); upgrade path is reading the app type from Steam's appinfo.vdf, or a "Not a game" button
     private static readonly Regex[] ExcludedFolders = Wildcards(
         "wallpaper_engine", "Steamworks Shared", "OBS Studio", "Soundpad", "Lossless Scaling", "Blender", "Godot*",
         "RPG Maker*", "GameMaker*", "Aseprite", "Krita", "Substance 3D*", "Pixel Composer", "Bforartists",
-        "Proton*", "Steam Linux Runtime*", "SteamVR");
+        "Proton*", "Steam Linux Runtime*", "SteamVR", "Bongo*Cat*", "Desktop*Mate*");
 
     /// <summary>A Steam install folder that holds a tool or creative app rather than a game.</summary>
     public static bool IsNonGameFolder(string folderName) => ExcludedFolders.Any(rx => rx.IsMatch(folderName));

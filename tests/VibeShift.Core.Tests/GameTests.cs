@@ -61,6 +61,26 @@ public class GameTests
     public void Steam_creative_tools_are_not_games(string path) =>
         Assert.False(GameRules.IsGame(path, new[] { Root }, Array.Empty<string>(), true));
 
+    [Theory] // audit A8: desktop companions run all day next to work; Auto mode mustn't close AI apps for them
+    [InlineData(@"D:\SteamLibrary\steamapps\common\BongoCat\BongoCat.exe")]
+    [InlineData(@"D:\SteamLibrary\steamapps\common\Bongo Cat\Bongo Cat.exe")]
+    [InlineData(@"D:\SteamLibrary\steamapps\common\Desktop Mate\DesktopMate.exe")]
+    public void Steam_desktop_companions_are_not_games(string path) =>
+        Assert.False(GameRules.IsGame(path, new[] { Root }, Array.Empty<string>(), true));
+
+    [Fact] // audit A5: a My games exe starts in its own folder, as from Explorer, not in VibeShift's (System32 at login)
+    public void Play_starts_an_exe_game_in_its_own_folder()
+    {
+        var exe = new InstalledGame("exe:c:\\games\\emu\\emu.exe", "Emu", @"C:\Games\Emu\emu.exe", DateTime.MinValue).ToStartInfo();
+        Assert.Equal(@"C:\Games\Emu\emu.exe", exe.FileName);
+        Assert.Equal(@"C:\Games\Emu", exe.WorkingDirectory);
+        Assert.True(exe.UseShellExecute);
+        var steam = new InstalledGame("steam:1422450", "Deadlock", "steam://rungameid/1422450", DateTime.MinValue).ToStartInfo();
+        Assert.Equal("steam://rungameid/1422450", steam.FileName);
+        Assert.Equal("", steam.WorkingDirectory);
+        Assert.True(steam.UseShellExecute);
+    }
+
     [Theory] // Review Focus 4
     [InlineData(@"D:\SteamLibrary\steamapps\common\Deadlock\game\bin\win64\deadlock.exe", true, true)]
     [InlineData(@"d:\steamlibrary\STEAMAPPS\common\Deadlock\deadlock.exe", true, true)]

@@ -5,7 +5,15 @@ using Microsoft.Win32;
 namespace VibeShift.Core.Games;
 
 /// <summary>An installed game the Play button can start. Id is "steam:&lt;appid&gt;", "epic:&lt;AppName&gt;" or "exe:&lt;path&gt;".</summary>
-public sealed record InstalledGame(string Id, string Name, string LaunchUri, DateTime LastPlayedUtc);
+public sealed record InstalledGame(string Id, string Name, string LaunchUri, DateTime LastPlayedUtc)
+{
+    /// <summary>Store links go to the shell; a My games exe starts in its own folder, as from Explorer (games load files relative to it).</summary>
+    public System.Diagnostics.ProcessStartInfo ToStartInfo() => new(LaunchUri)
+    {
+        UseShellExecute = true,
+        WorkingDirectory = Path.IsPathFullyQualified(LaunchUri) ? Path.GetDirectoryName(LaunchUri) ?? "" : "",
+    };
+}
 
 /// <summary>Folders games get installed into, from the launchers' own records.</summary>
 public static partial class GameLibraries
