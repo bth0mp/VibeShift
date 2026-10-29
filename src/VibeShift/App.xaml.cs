@@ -173,7 +173,7 @@ public partial class App : Application
             // Held during the hand-over, so the copy Explorer starts never hands over in turn.
             using var handover = new EventWaitHandle(false, EventResetMode.ManualReset, @"Local\VibeShift.Handover", out bool mine);
             if (!mine) return false;
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{exe}\"") { UseShellExecute = false })?.Dispose();
+            Process.Start(new ProcessStartInfo(ReopenTarget.Explorer, $"\"{exe}\"") { UseShellExecute = false })?.Dispose();
             // Explorer always "succeeds": leave only once the new copy has taken the lock.
             for (int i = 0; i < 50; i++)
             {

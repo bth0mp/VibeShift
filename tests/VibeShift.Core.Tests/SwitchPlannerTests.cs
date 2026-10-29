@@ -371,11 +371,14 @@ public class SwitchPlannerTests
     public void Versioned_install_reopens_through_its_stub(string path, bool stubExists, string expected) =>
         Assert.Equal(expected, ReopenTarget.PreferStub(path, _ => stubExists));
 
+    // By full path: a bare "explorer.exe" is searched for in the current folder (a terminal's, maybe a cloned repo) first.
+    private static readonly string WindowsExplorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+
     [Fact] // M14: an elevated VibeShift must still reopen apps unelevated, via the shell
     public void Elevated_reopen_goes_through_the_shell()
     {
         var b = ReopenTarget.ToStartInfo(new("cursor", "Cursor", @"C:\Apps\cursor\Cursor.exe", null), elevated: true);
-        Assert.Equal("explorer.exe", b.FileName);
+        Assert.Equal(WindowsExplorer, b.FileName);
         Assert.Equal("\"C:\\Apps\\cursor\\Cursor.exe\"", b.Arguments);
     }
 
@@ -383,7 +386,7 @@ public class SwitchPlannerTests
     public void Reopen_start_info()
     {
         var a = ReopenTarget.ToStartInfo(new("chatgpt", "ChatGPT", null, "OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0!ChatGPT"));
-        Assert.Equal("explorer.exe", a.FileName);
+        Assert.Equal(WindowsExplorer, a.FileName);
         Assert.Equal(@"shell:AppsFolder\OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0!ChatGPT", a.Arguments);
         var b = ReopenTarget.ToStartInfo(new("cursor", "Cursor", @"C:\Apps\cursor\Cursor.exe", null));
         Assert.Equal(@"C:\Apps\cursor\Cursor.exe", b.FileName);

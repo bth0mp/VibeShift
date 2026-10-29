@@ -209,7 +209,7 @@ public sealed class Switcher(JsonStore store)
                 using var _ = Process.Start(start);
                 // A direct start throws when it fails; one handed to the shell always "succeeds", so check those.
                 // (An app whose row was removed while gaming can't be recognised, so it isn't checked.)
-                if (start.FileName == "explorer.exe" && known.Contains(app.EntryId)) viaShell.Add(app);
+                if (start.FileName == ReopenTarget.Explorer && known.Contains(app.EntryId)) viaShell.Add(app);
             }
             catch (Exception e) when (e is Win32Exception or InvalidOperationException or ArgumentException or FileNotFoundException)
             {

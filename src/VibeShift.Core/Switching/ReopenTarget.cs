@@ -6,6 +6,9 @@ namespace VibeShift.Core.Switching;
 
 public static partial class ReopenTarget
 {
+    /// <summary>Windows' own explorer.exe. By full path: a bare name is searched for in the current folder first.</summary>
+    public static readonly string Explorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+
     [GeneratedRegex(@"^app-\d+(\.\d+)*$", RegexOptions.IgnoreCase)]
     private static partial Regex VersionedFolder();
 
@@ -29,9 +32,9 @@ public static partial class ReopenTarget
     /// </summary>
     public static ProcessStartInfo ToStartInfo(ClosedApp app, bool elevated = false)
     {
-        if (app.Aumid is { } aumid) return new ProcessStartInfo("explorer.exe", @"shell:AppsFolder\" + aumid);
+        if (app.Aumid is { } aumid) return new ProcessStartInfo(Explorer, @"shell:AppsFolder\" + aumid);
         if (app.ExePath is not { } exe) throw new ArgumentException($"{app.Name} has nothing to reopen it with.", nameof(app));
-        if (elevated) return new ProcessStartInfo("explorer.exe", $"\"{exe}\"");
+        if (elevated) return new ProcessStartInfo(Explorer, $"\"{exe}\"");
         return new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) };
     }
 }

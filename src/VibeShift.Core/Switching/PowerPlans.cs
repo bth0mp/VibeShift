@@ -28,7 +28,8 @@ public static class PowerPlans
     // PowerEnumerate + PowerReadFriendlyName if that ever matters
     private static string Run(string args)
     {
-        using var p = Process.Start(new ProcessStartInfo("powercfg.exe", args)
+        // By full path: a bare name is searched for in the current folder (a terminal's, say) before System32.
+        using var p = Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "powercfg.exe"), args)
             { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true })!;
         string output = p.StandardOutput.ReadToEnd();
         p.WaitForExit(10_000);
