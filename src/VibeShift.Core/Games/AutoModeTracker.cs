@@ -18,13 +18,17 @@ public sealed class AutoModeTracker(TimeSpan backDelay)
     private DateTime lastGameSeen;
 
     /// <param name="autoStart">Auto mode is on: a new game may start gaming mode.</param>
-    public AutoAction Update(IReadOnlyCollection<int> gamePids, Mode mode, DateTime nowUtc, bool autoStart = true)
+    /// <param name="canSwitch">
+    /// False while VibeShift is busy (the Vibe page opening an app): games are still counted, but no switch is due
+    /// yet, so the switch back isn't used up by a switch that couldn't run.
+    /// </param>
+    public AutoAction Update(IReadOnlyCollection<int> gamePids, Mode mode, DateTime nowUtc, bool autoStart = true, bool canSwitch = true)
     {
         suppressed.IntersectWith(gamePids);
 
         if (mode == Mode.Coding)
         {
-            if (!autoStart || !gamePids.Any(pid => !suppressed.Contains(pid))) return AutoAction.None;
+            if (!canSwitch || !autoStart || !gamePids.Any(pid => !suppressed.Contains(pid))) return AutoAction.None;
             Arm(nowUtc);
             return AutoAction.StartGaming;
         }
@@ -37,7 +41,7 @@ public sealed class AutoModeTracker(TimeSpan backDelay)
             return AutoAction.None;
         }
         // Never saw a game this session: nothing to wait for, so leave it to the user.
-        if (!sawGame || nowUtc - lastGameSeen <= backDelay) return AutoAction.None;
+        if (!canSwitch || !sawGame || nowUtc - lastGameSeen <= backDelay) return AutoAction.None;
         returnArmed = false;
         return AutoAction.BackToCoding;
     }

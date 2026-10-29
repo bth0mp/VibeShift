@@ -269,7 +269,7 @@ public partial class App : Application
                 vm.CurrentGamePids = games.Keys.ToList();
                 LogGames(games);
                 // Automatic switches never show or activate the window; only the tray tooltip changes.
-                if (tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode) != AutoAction.None)
+                if (tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode, canSwitch: vm.CanVibeAct) != AutoAction.None)
                     await vm.ToggleModeAsync(automatic: true);
                 else if (gaming && vm.SessionStartedUtc is { } since
                          && reminder.Due(games.Count > 0, AcceptsNotifications(), since, DateTime.UtcNow))

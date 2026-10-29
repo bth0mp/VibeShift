@@ -102,9 +102,9 @@
             <StackPanel Grid.Row="4" Margin="0,16,0,0">
                 <Grid>
                     <Button Style="{StaticResource PrimaryButton}" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}"
-                            IsEnabled="{Binding IsIdle}" Visibility="{Binding IsCoding, Converter={StaticResource Visible}}" />
+                            IsEnabled="{Binding CanVibeAct}" Visibility="{Binding IsCoding, Converter={StaticResource Visible}}" />
                     <Button Style="{StaticResource GhostButton}" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}"
-                            IsEnabled="{Binding IsIdle}" Visibility="{Binding IsGaming, Converter={StaticResource Visible}}" />
+                            IsEnabled="{Binding CanVibeAct}" Visibility="{Binding IsGaming, Converter={StaticResource Visible}}" />
                 </Grid>
                 <!-- One click to in-game: switch to gaming mode, then launch the game -->
                 <Button Style="{StaticResource SoftButton}" Content="{Binding PlayText}" Command="{Binding PlayCommand}" Margin="0,8,0,0"

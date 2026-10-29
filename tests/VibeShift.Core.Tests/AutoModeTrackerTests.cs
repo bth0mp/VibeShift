@@ -20,6 +20,17 @@ public class AutoModeTrackerTests
         Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddSeconds(11)));
     }
 
+    [Fact] // audit A1: the game closed while the Vibe page was opening an app; the switch back must wait, not vanish
+    public void Switch_back_waits_while_VibeShift_is_busy()
+    {
+        T.Update(new[] { 7 }, Mode.Coding, t0);
+        Assert.Equal(AutoAction.None, T.Update(None, Mode.Gaming, t0.AddSeconds(11), canSwitch: false));
+        Assert.Equal(AutoAction.None, T.Update(None, Mode.Gaming, t0.AddSeconds(15), canSwitch: false));
+        Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddSeconds(18)));
+        Assert.Equal(AutoAction.None, T.Update(new[] { 9 }, Mode.Coding, t0.AddSeconds(30), canSwitch: false)); // start waits too
+        Assert.Equal(AutoAction.StartGaming, T.Update(new[] { 9 }, Mode.Coding, t0.AddSeconds(33)));
+    }
+
     [Fact]
     public void Game_relaunch_within_delay_keeps_gaming()
     {
