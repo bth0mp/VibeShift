@@ -16,6 +16,8 @@ public partial class MainWindow : Window
         this.vm = vm;
         DataContext = vm;
         SourceInitialized += (_, _) => ThemeManager.ApplyChrome(this);
+        // At 200% on a 1080p screen the work area is ~516 DIP: fit it (the lists scroll) rather than run off-screen.
+        MaxHeight = SystemParameters.WorkArea.Height;
     }
 
     public void ShowPage(string page) =>

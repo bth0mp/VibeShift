@@ -10,7 +10,8 @@
     <SolidColorBrush x:Key="MutedBrush" Color="#9c94b3" />
     <SolidColorBrush x:Key="AccentBrush" Color="#8b5cf6" />
     <SolidColorBrush x:Key="HighlightBrush" Color="#c084fc" />
-    <SolidColorBrush x:Key="ToggleOffBrush" Color="#3a3550" />
+    <!-- Off switches and scrollbar thumbs: 4.1:1 on Surface, 3.8:1 on Raised (WCAG 1.4.11 asks 3:1) -->
+    <SolidColorBrush x:Key="ToggleOffBrush" Color="#7d7596" />
     <SolidColorBrush x:Key="CodingDotBrush" Color="#34d399" />
     <SolidColorBrush x:Key="RunningTextBrush" Color="#34d399" />
     <SolidColorBrush x:Key="GamingDotBrush" Color="#a855f7" />

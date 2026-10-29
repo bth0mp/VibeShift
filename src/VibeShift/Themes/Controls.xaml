@@ -5,25 +5,37 @@
     <local:InverseVisibility x:Key="Hidden" xmlns:local="clr-namespace:VibeShift" />
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
-    <!-- Pill switch: accent when on -->
+    <!-- Pill switch: outlined with a small knob when off, filled accent with a white knob when on (state shows by
+         shape, not only colour); a separate ring for keyboard focus, since a border would vanish into the on track -->
     <Style x:Key="ToggleSwitch" TargetType="CheckBox">
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Focusable" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
-                    <Grid Width="30" Height="17" Background="Transparent">
-                        <Border x:Name="Track" CornerRadius="8.5" Background="{DynamicResource ToggleOffBrush}" />
-                        <Ellipse x:Name="Knob" Width="13" Height="13" Margin="2,0" Fill="White" HorizontalAlignment="Left" />
+                    <Grid x:Name="Root" Width="30" Height="17" Background="Transparent">
+                        <Border x:Name="FocusRing" Margin="-3" CornerRadius="11.5" BorderThickness="1.5"
+                                BorderBrush="{DynamicResource TextBrush}" Visibility="Collapsed" />
+                        <Border x:Name="Track" CornerRadius="8.5" BorderThickness="1.5" Background="Transparent"
+                                BorderBrush="{DynamicResource ToggleOffBrush}" />
+                        <Ellipse x:Name="Knob" Width="9" Height="9" Margin="4,0" Fill="{DynamicResource ToggleOffBrush}"
+                                 HorizontalAlignment="Left" />
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Knob" Property="Fill" Value="White" />
+                            <Setter TargetName="Knob" Property="Width" Value="13" />
+                            <Setter TargetName="Knob" Property="Height" Value="13" />
+                            <Setter TargetName="Knob" Property="Margin" Value="2,0" />
                             <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource HighlightBrush}" />
-                            <Setter TargetName="Track" Property="BorderThickness" Value="1" />
+                            <Setter TargetName="FocusRing" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.4" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
