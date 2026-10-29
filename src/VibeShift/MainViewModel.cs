@@ -282,6 +282,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             await Updater.InstallAsync(Http, r, exe);
+            // A switch or Vibe page action may have started during the download: restarting now would cut it in half
+            // (services stopped but not recorded). The new exe is already in place, so just restart once it's done.
+            UpdateStatus = "Restarting after the switch...";
+            while (IsBusy || vibeBusy) await Task.Delay(200);
             Log.Write($"Updated to {r.Version.ToString(3)}, restarting");
             UpdateStatus = "Restarting...";
             RestartRequested?.Invoke(exe);
@@ -379,7 +383,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             else
             {
-                await switcher.CloseAppsAsync(Settings.Clone(), ids, CurrentGamePids);
+                // Scan now: with Auto mode off, nothing has looked for games while coding.
+                var games = FindGames is { } find ? await Task.Run(find) : CurrentGamePids;
+                await switcher.CloseAppsAsync(Settings.Clone(), ids, games);
             }
         }
         catch (Exception e)
