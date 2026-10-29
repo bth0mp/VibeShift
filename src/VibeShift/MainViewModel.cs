@@ -338,7 +338,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             p => p.SessionId != MySessionId);
         var running = detected.Where(d => d.Roots.Count > 0).Select(d => d.Entry.Id).ToHashSet();
         var launchable = Switcher.LaunchTargets(Settings);
-        return entries.Where(e => AppCatalog.IsAiApp(e) && (running.Contains(e.Id) || launchable.ContainsKey(e.Id)))
+        return entries.Where(e => Settings.IsVibeApp(e) && (running.Contains(e.Id) || launchable.ContainsKey(e.Id)))
             .Select(e => (e.Id, e.Name, running.Contains(e.Id)))
             .ToList();
     }
@@ -411,7 +411,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var running = detected.Where(d => d.Roots.Count > 0).ToDictionary(d => d.Entry.Id);
         var launchable = Switcher.LaunchTargets(Settings);
         var wanted = new List<VibeAppRow>();
-        foreach (var e in entries.Where(AppCatalog.IsAiApp))
+        foreach (var e in entries.Where(Settings.IsVibeApp))
         {
             bool isRunning = running.TryGetValue(e.Id, out var d);
             if (!isRunning && !launchable.ContainsKey(e.Id)) continue; // can't be opened until seen running once

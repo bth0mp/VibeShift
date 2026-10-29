@@ -104,6 +104,19 @@ public sealed class StateTests : IDisposable
         Assert.False(s.Toggles.ContainsKey(id));
     }
 
+    [Fact] // audit A9: Discord/OBS opened for gaming aren't AI apps: "Open all" mustn't launch them, the Vibe page can't close them
+    public void An_app_opened_for_gaming_is_not_a_vibe_app()
+    {
+        var s = new Settings();
+        var obs = AppCatalog.Custom(@"C:\x\obs64.exe");
+        var claude = AppCatalog.BuiltIn.Single(e => e.Id == "claude-desktop");
+        Assert.True(s.IsVibeApp(obs)); // an app the user added may be their own AI tool
+        s.GameApps.Add(obs.Id);
+        Assert.False(s.IsVibeApp(obs));
+        Assert.True(s.IsVibeApp(claude));
+        Assert.False(s.IsVibeApp(AppCatalog.BuiltIn.Single(e => e.Id == "browsers")));
+    }
+
     [Fact] // audit A2: settings an older version left behind are repaired on load
     public void Leftovers_of_a_removed_custom_app_are_dropped_on_load()
     {

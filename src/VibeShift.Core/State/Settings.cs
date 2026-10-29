@@ -53,6 +53,12 @@ public sealed class Settings
 
     public bool IsOn(CatalogEntry e) => Toggles.TryGetValue(e.Id, out var on) ? on : e.DefaultOn;
 
+    /// <summary>
+    /// Gets a live switch on the Vibe page and the tray's AI apps menu: an AI app, or one the user added (it may be
+    /// their own AI tool), but not one opened for gaming: Discord or OBS isn't an AI app, and "Open all" mustn't start it.
+    /// </summary>
+    public bool IsVibeApp(CatalogEntry e) => AppCatalog.IsAiApp(e) && !GameApps.Contains(e.Id);
+
     /// <summary>Drops null list entries from a hand-edited file and upgrades older files' choices.</summary>
     internal void Normalize()
     {
