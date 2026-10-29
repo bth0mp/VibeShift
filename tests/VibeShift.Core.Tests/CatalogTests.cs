@@ -52,6 +52,12 @@ public class CatalogTests
     [InlineData("node", "node D:\\games\\mcpe\\server.js", false)]
     [InlineData("python", "python mcp_server.py", true)]
     [InlineData("node", "node C:\\x\\weather-mcp\\index.js", true)]
+    // audit A4: the token in the interpreter's own path or the project folder isn't an MCP server
+    [InlineData("python", "C:\\Users\\u\\miniconda3\\envs\\mcp\\python.exe -m ipykernel_launcher -f k.json", false)]
+    [InlineData("python", "\"C:\\my tools\\envs\\mcp\\python.exe\" -m ipykernel_launcher", false)]
+    [InlineData("node", "node C:\\dev\\my-mcp-app\\node_modules\\vite\\bin\\vite.js --port 5173", false)]
+    [InlineData("node", "\"C:\\Program Files\\nodejs\\node.exe\" C:\\npm-cache\\_npx\\4b4c\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js C:\\", true)]
+    [InlineData("node", "node C:\\npm-cache\\_npx\\4b4c\\node_modules\\.bin\\..\\@upstash\\context7-mcp\\dist\\index.js", true)]
     public void Mcp_matching(string name, string? cmd, bool expected) => Assert.Equal(expected, McpMatcher.IsMcp(name, cmd));
 
     [Fact] // M12: command lines cost a process handle; only runtimes need one

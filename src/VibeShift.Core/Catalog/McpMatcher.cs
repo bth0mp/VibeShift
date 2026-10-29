@@ -23,8 +23,19 @@ public static partial class McpMatcher
 
     public static bool IsRuntime(string name) => Runtimes.Contains(name);
 
+    // The executable itself, quoted or not: "mcp" in the interpreter's path (a conda env named mcp) says nothing.
+    [GeneratedRegex(@"^\s*(""[^""]*""|\S+)")]
+    private static partial Regex Executable();
+
+    // A path into node_modules counts from the package on: the project around it (my-mcp-app) isn't the server.
+    [GeneratedRegex(@"[^\s""]*node_modules[\\/]", RegexOptions.IgnoreCase)]
+    private static partial Regex UpToPackage();
+
+    // ponytail: an MCP server whose only "mcp" is its venv's python.exe path is missed (it keeps running); that's
+    // the safe side, since a wrong match kills a notebook kernel or dev server for good
     public static bool IsMcp(string name, string? commandLine) =>
-        commandLine is not null && IsRuntime(name) && Pattern().IsMatch(commandLine) && !NpmAgent().IsMatch(commandLine);
+        commandLine is not null && IsRuntime(name) && Pattern().IsMatch(UpToPackage().Replace(Executable().Replace(commandLine, ""), ""))
+        && !NpmAgent().IsMatch(commandLine);
 
     public static bool IsNpmAgent(string name, string? commandLine) =>
         commandLine is not null && name.Equals("node", StringComparison.OrdinalIgnoreCase) && NpmAgent().IsMatch(commandLine);
