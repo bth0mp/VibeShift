@@ -142,7 +142,8 @@ public sealed class Switcher(JsonStore store)
         if (plan.ShutdownWsl)
         {
             progress?.Report("Shutting down WSL...");
-            Step("wsl --shutdown", () => RunHidden("wsl.exe", "--shutdown"));
+            // By full path: a bare name is searched for in the current folder (a terminal's, say) before System32.
+            Step("wsl --shutdown", () => RunHidden(Path.Combine(Environment.SystemDirectory, "wsl.exe"), "--shutdown"));
         }
 
         if (plan.StopServices.Count > 0)
