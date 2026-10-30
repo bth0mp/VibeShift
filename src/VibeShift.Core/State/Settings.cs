@@ -21,6 +21,9 @@ public sealed class Settings
 
     public List<string> CustomApps { get; set; } = [];
     public List<string> MyGames { get; set; } = [];
+
+    /// <summary>Exes the user said aren't games ("Not a game"): never detected, even inside a game library.</summary>
+    public List<string> NotGames { get; set; } = [];
     public bool AutoMode { get; set; }
     public bool StartWithWindows { get; set; }
     public bool ExtraBoost { get; set; }
@@ -62,7 +65,7 @@ public sealed class Settings
     /// <summary>Drops null list entries from a hand-edited file and upgrades older files' choices.</summary>
     internal void Normalize()
     {
-        foreach (var list in new[] { KnownApps, CustomApps, MyGames, BoostServices, VibeApps, GameApps }) list.RemoveAll(x => x is null);
+        foreach (var list in new[] { KnownApps, CustomApps, MyGames, NotGames, BoostServices, VibeApps, GameApps }) list.RemoveAll(x => x is null);
         foreach (var bad in LaunchTargets.Where(kv => kv.Value is null).Select(kv => kv.Key).ToList()) LaunchTargets.Remove(bad);
         // 1.0.0 covered the Microsoft 365 Copilot app under the Copilot toggle; keep the user's choice for it.
         if (SchemaVersion < 2 && Toggles.TryGetValue("copilot", out var on) && !Toggles.ContainsKey("m365copilot"))

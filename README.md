@@ -117,6 +117,7 @@ Off by default. Turn it on in Settings and VibeShift switches to gaming mode by 
 - Any program with a window running from a Steam, Epic, GOG, EA app or Xbox app games folder. VibeShift finds those folders automatically.
 - Anything you add under **My games**.
 - Launchers, crash reporters, anti-cheat services, installers and non-game Steam apps such as Wallpaper Engine are ignored.
+- While you're in gaming mode, Home shows what VibeShift sees you playing (**Playing Deadlock**). If that's not a game (an idle game or desktop pet you leave running all day), click **Not a game** and VibeShift ignores it from then on. They're listed under **Not games** in Settings, where you can undo it.
 
 **Your clicks always win:**
 - Switch back to vibe coding by hand while a game is still running, and Auto mode leaves that game alone.

@@ -48,6 +48,24 @@ public static class GameRules
         var folders = Path.GetDirectoryName(imagePath)?.Split('\\') ?? [];
         return !folders.Any(f => ExcludedFolders.Any(rx => rx.IsMatch(f)));
     }
+
+    // Library folders holding many games (Steam's common, EA, Xbox); Epic and GOG roots are each one game's own folder.
+    private static readonly HashSet<string> SharedRoots = new(StringComparer.OrdinalIgnoreCase) { "common", "EA Games", "XboxGames" };
+
+    /// <summary>A game's name for "Playing ...": its install folder (Deadlock, Hood Warfare 2), else the exe's name.</summary>
+    public static string DisplayName(string imagePath, IReadOnlyList<string> roots)
+    {
+        foreach (var r in roots)
+        {
+            var root = r.TrimEnd('\\');
+            if (!imagePath.StartsWith(root + @"\", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!SharedRoots.Contains(Path.GetFileName(root))) return Path.GetFileName(root);
+            var rest = imagePath[(root.Length + 1)..];
+            int slash = rest.IndexOf('\\');
+            if (slash > 0) return rest[..slash];
+        }
+        return Path.GetFileNameWithoutExtension(imagePath);
+    }
 }
 
 /// <summary>Finds running games each poll. Image paths are cached per process instance; windows are only checked for candidates.</summary>
@@ -56,7 +74,8 @@ public sealed class GameWatcher(
     IReadOnlyList<string> myGames,
     Func<int, string?> imagePath,
     Func<int, bool> hasVisibleWindow,
-    int? sessionId = null) // only this logon session's games count; null = any (tests)
+    int? sessionId = null, // only this logon session's games count; null = any (tests)
+    IReadOnlyList<string>? notGames = null)
 {
     private readonly Dictionary<(int Pid, long CreateTime), string?> paths = [];
 
@@ -77,7 +96,9 @@ public sealed class GameWatcher(
             live.Add(key);
             if (!paths.TryGetValue(key, out var path)) paths[key] = path = imagePath(p.Pid);
             if (path is null) continue;
-            if (GameRules.IsMyGame(path, myGames) || (GameRules.IsCandidate(path, roots) && hasVisibleWindow(p.Pid)))
+            // My games always count; a found game counts unless the user said it isn't one ("Not a game").
+            if (GameRules.IsMyGame(path, myGames)
+                || (GameRules.IsCandidate(path, roots) && !GameRules.IsMyGame(path, notGames ?? []) && hasVisibleWindow(p.Pid)))
                 games.Add(p.Pid);
         }
         foreach (var gone in paths.Keys.Where(k => !live.Contains(k)).ToList()) paths.Remove(gone);

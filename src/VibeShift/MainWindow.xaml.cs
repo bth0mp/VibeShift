@@ -56,6 +56,11 @@ public partial class MainWindow : Window
         if (((FrameworkElement)sender).DataContext is string path) vm.RemoveGame(path);
     }
 
+    private void RemoveNotGame_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is string path) vm.RemoveNotGame(path);
+    }
+
     private void Link_RequestNavigate(object sender, RequestNavigateEventArgs e)
     {
         Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true })?.Dispose();

@@ -100,6 +100,13 @@
             </Border>
 
             <StackPanel Grid.Row="4" Margin="0,16,0,0">
+                <!-- While gaming: the game VibeShift sees (and will switch back after), with a way out for false matches -->
+                <DockPanel Margin="2,0,2,10" Visibility="{Binding IsPlaying, Converter={StaticResource Visible}}">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Not a game" Command="{Binding NotAGameCommand}"
+                            ToolTip="VibeShift will stop treating this as a game"
+                            AutomationProperties.Name="{Binding PlayingText, StringFormat='{}{0}: not a game'}" />
+                    <TextBlock Style="{StaticResource Hint}" Text="{Binding PlayingText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
                 <Grid>
                     <Button Style="{StaticResource PrimaryButton}" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}"
                             IsEnabled="{Binding CanVibeAct}" Visibility="{Binding IsCoding, Converter={StaticResource Visible}}" />
@@ -301,6 +308,23 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                        <StackPanel Visibility="{Binding HasNotGames, Converter={StaticResource Visible}}">
+                            <Rectangle Height="1" Fill="{DynamicResource BorderBrush}" Margin="0,11" />
+                            <TextBlock Style="{StaticResource Label}" Text="NOT GAMES" />
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,4"
+                                       Text="You said these aren't games, so VibeShift ignores them. Remove one to have it detected again." />
+                            <ItemsControl ItemsSource="{Binding NotGames}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,3,0,0">
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Click="RemoveNotGame_Click"
+                                                    ToolTip="Remove" AutomationProperties.Name="{Binding StringFormat='Remove {0}'}" />
+                                            <TextBlock Text="{Binding}" ToolTip="{Binding}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

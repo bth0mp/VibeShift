@@ -47,6 +47,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CheckUpdatesCommand = new RelayCommand(() => CheckUpdatesAsync(quiet: false));
         UpdateCommand = new RelayCommand(UpdateAsync);
         MyGames = new ObservableCollection<string>(settings.MyGames);
+        NotGames = new ObservableCollection<string>(settings.NotGames);
+        NotAGameCommand = new RelayCommand(() =>
+        {
+            MarkNotAGame();
+            return Task.CompletedTask;
+        });
         if (!demo) stats = store.LoadStats();
     }
 
@@ -67,6 +73,53 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<AppRow> HomeRows { get; } = [];
     public ObservableCollection<AppRow> AllRows { get; } = [];
     public ObservableCollection<string> MyGames { get; }
+
+    // ----- Now playing / Not a game -----
+
+    public ObservableCollection<string> NotGames { get; }
+    public bool HasNotGames => NotGames.Count > 0;
+
+    private IReadOnlyList<string> playingPaths = [];
+
+    /// <summary>"Playing Deadlock" on Home while gaming: proof VibeShift sees the game it will switch back after.</summary>
+    public string PlayingText { get; private set; } = "";
+    public bool IsPlaying => playingPaths.Count > 0;
+    public ICommand NotAGameCommand { get; }
+
+    /// <summary>Raised after "Not a game", so the App can stop counting it as the game that kept gaming mode on.</summary>
+    public event Action? NotAGameMarked;
+
+    public void SetPlaying(IReadOnlyList<(string Name, string Path)> games)
+    {
+        var paths = games.Select(g => g.Path).ToList();
+        if (paths.SequenceEqual(playingPaths, StringComparer.OrdinalIgnoreCase)) return;
+        playingPaths = paths;
+        PlayingText = games.Count == 0 ? "" : "Playing " + string.Join(" and ", games.Select(g => g.Name).Distinct());
+        Raise(nameof(PlayingText));
+        Raise(nameof(IsPlaying));
+    }
+
+    private void MarkNotAGame()
+    {
+        foreach (var path in playingPaths.Where(p => !Settings.NotGames.Contains(p, StringComparer.OrdinalIgnoreCase)))
+        {
+            Settings.NotGames.Add(path);
+            NotGames.Add(path);
+            Log.Write("Not a game: " + path);
+        }
+        Raise(nameof(HasNotGames));
+        SetPlaying([]);
+        SaveSettings(); // rebuilds the game watcher without it
+        NotAGameMarked?.Invoke();
+    }
+
+    public void RemoveNotGame(string path)
+    {
+        Settings.NotGames.Remove(path);
+        NotGames.Remove(path);
+        Raise(nameof(HasNotGames));
+        SaveSettings();
+    }
 
     // ----- Play button -----
 
@@ -866,6 +919,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ];
         Raise(nameof(Games));
         RaisePlay();
+        if (IsGaming) SetPlaying([("Deadlock", @"D:\SteamLibrary\steamapps\common\Deadlock\game\bin\win64\deadlock.exe")]);
+        NotGames.Add(@"D:\SteamLibrary\steamapps\common\Rusty's Retirement\Rusty's Retirement.exe");
+        Raise(nameof(HasNotGames));
         StatsText = IsGaming ? "In gaming mode for 1 h 12 m" : "Last 7 days: 4 sessions · 18.2 GB freed · 9 h 12 m in gaming mode";
         PowerPlanOptions = [new("", "Don't change"), new("1", "Balanced"), new("2", "High performance"), new("3", "Power saver")];
         FreeRamText = IsGaming ? "11.4 GB" : "8.2 GB";

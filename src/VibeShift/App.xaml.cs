@@ -122,9 +122,17 @@ public partial class App : Application
             tray.Update(mode);
             reminder.Reset();
             loggedGames = [];
+            vm.SetPlaying([]);
             if (!automatic) tracker.ManualSwitch(mode, vm.CurrentGamePids, vm.Settings.ReturnWhenGameCloses);
             // Back from gaming with the window out of sight: say what opened. Nothing ever pops up while you play.
             if (mode == Mode.Coding && !window.IsVisible) tray.Notify("Back to vibe coding", vm.LastReturnMessage);
+        };
+        // "Not a game" mid-session: one started by hand waits for a real game again, so the app just ruled out doesn't
+        // count as "the game closed" (you may be playing something VibeShift can't see). One Auto mode started because
+        // of it switches back once it's gone.
+        vm.NotAGameMarked += () =>
+        {
+            if (!vm.SessionIsAutomatic) tracker.ManualSwitch(Mode.Gaming, [], vm.Settings.ReturnWhenGameCloses);
         };
         vm.SettingsChanged += RebuildWatcher;
         vm.FindGames = () => watcher is { } w ? w.Scan(ProcessSnapshot.Take()) : [];
@@ -260,14 +268,16 @@ public partial class App : Application
             bool gaming = vm.Mode == Mode.Gaming;
             if ((gaming || s.AutoMode) && watcher is { } w)
             {
-                var games = await Task.Run(() =>
+                var found = await Task.Run(() =>
                 {
                     var snapshot = ProcessSnapshot.Take();
-                    var found = w.Scan(snapshot);
-                    return snapshot.Where(p => found.Contains(p.Pid)).ToDictionary(p => p.Pid, p => p.Name);
+                    var pids = w.Scan(snapshot);
+                    return snapshot.Where(p => pids.Contains(p.Pid)).Select(p => (p.Pid, p.Name, Path: ProcessQuery.GetImagePath(p.Pid))).ToList();
                 });
+                var games = found.ToDictionary(g => g.Pid, g => g.Name);
                 vm.CurrentGamePids = games.Keys.ToList();
                 LogGames(games);
+                vm.SetPlaying(gaming ? found.Where(g => g.Path is not null).Select(g => (GameRules.DisplayName(g.Path!, vm.GameRoots), g.Path!)).ToList() : []);
                 // Automatic switches never show or activate the window; only the tray tooltip changes.
                 if (tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode, canSwitch: vm.CanVibeAct) != AutoAction.None)
                     await vm.ToggleModeAsync(automatic: true);
@@ -297,7 +307,8 @@ public partial class App : Application
             var roots = await Task.Run(GameLibraries.Discover);
             vm.GameRoots = roots;
             using var me = Process.GetCurrentProcess();
-            watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, ProcessQuery.HasVisibleWindow, me.SessionId);
+            watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, ProcessQuery.HasVisibleWindow, me.SessionId,
+                vm.Settings.NotGames.ToList());
         }
         catch (Exception ex)
         {

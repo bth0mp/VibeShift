@@ -107,6 +107,32 @@ public class GameTests
         Assert.Equal(new[] { 51 }, w.Scan(new[] { new ProcInfo(51, 1, "g", 10, 100, SessionId: 1) }));
     }
 
+    [Fact] // "Not a game": an idle game or companion left running would otherwise hold gaming mode (and Auto mode) forever
+    public void Watcher_skips_what_the_user_said_is_not_a_game()
+    {
+        var paths = new Dictionary<int, string> { [50] = Root + @"\Rusty's Retirement\Rusty.exe", [51] = Root + @"\Deadlock\deadlock.exe" };
+        var w = new GameWatcher(new[] { Root }, Array.Empty<string>(), pid => paths[pid], _ => true,
+            notGames: new[] { (Root + @"\Rusty's Retirement\Rusty.exe").ToUpperInvariant() });
+        Assert.Equal(new[] { 51 }, w.Scan(new[] { new ProcInfo(50, 1, "Rusty", 10, 100), new ProcInfo(51, 1, "deadlock", 10, 100) }));
+    }
+
+    [Fact] // an exe the user added to My games is a game, whatever else they said
+    public void My_games_win_over_not_games()
+    {
+        const string exe = @"C:\Emu\emu.exe";
+        var w = new GameWatcher(new[] { Root }, new[] { exe }, _ => exe, _ => false, notGames: new[] { exe });
+        Assert.Equal(new[] { 7 }, w.Scan(new[] { new ProcInfo(7, 1, "emu", 10, 100) }));
+    }
+
+    [Theory] // Home says "Playing <name>": the install folder reads better than the exe ("deadlock", "r5apex_dx12")
+    [InlineData(@"D:\SteamLibrary\steamapps\common\Deadlock\game\bin\win64\deadlock.exe", "Deadlock")]
+    [InlineData(@"d:\steamlibrary\steamapps\common\Hood Warfare 2\HW2.exe", "Hood Warfare 2")]
+    [InlineData(@"C:\XboxGames\Forza Horizon 5\Content\ForzaHorizon5.exe", "Forza Horizon 5")]
+    [InlineData(@"D:\Epic Games\Fortnite\FortniteGame\Binaries\Win64\FortniteClient-Win64-Shipping.exe", "Fortnite")] // Epic's root is the game
+    [InlineData(@"C:\Emu\emu.exe", "emu")]
+    public void Game_display_name(string path, string expected) =>
+        Assert.Equal(expected, GameRules.DisplayName(path, new[] { Root, @"C:\XboxGames", @"D:\Epic Games\Fortnite" }));
+
     [Fact]
     public void Watcher_detects_game_once_its_window_appears_and_caches_paths()
     {
