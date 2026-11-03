@@ -2,7 +2,7 @@ namespace VibeShift.Core.Games;
 
 public enum Mode { Coding, Gaming }
 
-public enum AutoAction { None, StartGaming, BackToCoding }
+public enum AutoAction { None, StartSoon, StartGaming, BackToCoding }
 
 /// <summary>
 /// Decides when VibeShift switches by itself. Auto mode starts gaming when a game starts. Switching back
@@ -10,12 +10,17 @@ public enum AutoAction { None, StartGaming, BackToCoding }
 /// turned on "Switch back when my game closes". Clicks still win: switching back by hand while a game runs
 /// suppresses that game until a new one starts.
 /// </summary>
-public sealed class AutoModeTracker(TimeSpan backDelay)
+/// <param name="startDelay">
+/// Auto mode's countdown: a new game first gives StartSoon (the App says "Gaming mode in 10 seconds", click to
+/// cancel), and StartGaming once it's still running this long after. Zero switches at once.
+/// </param>
+public sealed class AutoModeTracker(TimeSpan backDelay, TimeSpan startDelay = default)
 {
     private readonly HashSet<int> suppressed = [];
     private bool returnArmed; // switch back once this session's games have closed
     private bool sawGame;
     private DateTime lastGameSeen;
+    private DateTime? countdownSince; // Auto mode saw a new game and is about to start gaming mode
 
     /// <param name="autoStart">Auto mode is on: a new game may start gaming mode.</param>
     /// <param name="canSwitch">
@@ -28,9 +33,20 @@ public sealed class AutoModeTracker(TimeSpan backDelay)
 
         if (mode == Mode.Coding)
         {
-            if (!canSwitch || !autoStart || !gamePids.Any(pid => !suppressed.Contains(pid))) return AutoAction.None;
-            Arm(nowUtc);
-            return AutoAction.StartGaming;
+            if (!autoStart || !gamePids.Any(pid => !suppressed.Contains(pid)))
+            {
+                countdownSince = null; // gone before the countdown ended (a splash, a launcher): nothing starts
+                return AutoAction.None;
+            }
+            bool fresh = countdownSince is null;
+            countdownSince ??= nowUtc;
+            if (canSwitch && nowUtc - countdownSince >= startDelay)
+            {
+                countdownSince = null;
+                Arm(nowUtc);
+                return AutoAction.StartGaming;
+            }
+            return fresh && startDelay > TimeSpan.Zero ? AutoAction.StartSoon : AutoAction.None;
         }
 
         if (!returnArmed) return AutoAction.None;
@@ -58,8 +74,16 @@ public sealed class AutoModeTracker(TimeSpan backDelay)
         else ManualSwitch(Mode.Gaming, [], returnWhenGameCloses);
     }
 
+    /// <summary>"Keep my apps open" during the countdown: those games are left alone until a new one starts, as after a manual switch back.</summary>
+    public void CancelStart(IReadOnlyCollection<int> gamePidsNow)
+    {
+        countdownSince = null;
+        suppressed.UnionWith(gamePidsNow);
+    }
+
     public void ManualSwitch(Mode newMode, IReadOnlyCollection<int> gamePidsNow, bool returnWhenGameCloses = false)
     {
+        countdownSince = null;
         sawGame = false;
         returnArmed = newMode == Mode.Gaming && returnWhenGameCloses;
         if (newMode == Mode.Coding) suppressed.UnionWith(gamePidsNow);

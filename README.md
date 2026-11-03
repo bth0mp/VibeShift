@@ -111,7 +111,7 @@ Closing the window keeps VibeShift running as a small icon by the clock, with a 
 
 ## Auto mode
 
-Off by default. Turn it on in Settings and VibeShift switches to gaming mode by itself when a game starts. It switches back 10 seconds after the game closes, so a launcher restarting the game doesn't bounce your apps.
+Off by default. Turn it on in Settings and VibeShift switches to gaming mode by itself when a game starts. First a notification says **Gaming mode in 10 seconds**: click it to keep your apps open (save that file first, or it wasn't a game), and Auto mode leaves that game alone until another one starts. It switches back 10 seconds after the game closes, so a launcher restarting the game doesn't bounce your apps.
 
 **What counts as a game:**
 - Any program with a window running from a Steam, Epic, GOG, EA app or Xbox app games folder. VibeShift finds those folders automatically.
@@ -123,7 +123,7 @@ Off by default. Turn it on in Settings and VibeShift switches to gaming mode by 
 - Switch back to vibe coding by hand while a game is still running, and Auto mode leaves that game alone.
 - Start gaming by hand, and Auto mode won't switch you back.
 
-Automatic switches never open the VibeShift window or pop anything up over your game.
+Automatic switches never open the VibeShift window or pop anything up over your game. The 10-second notice is an ordinary Windows notification, and Windows holds those back while a game runs full screen (the switch then just happens).
 
 ## Extra boost
 

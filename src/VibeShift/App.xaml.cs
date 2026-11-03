@@ -21,7 +21,9 @@ namespace VibeShift;
 
 public partial class App : Application
 {
-    private readonly AutoModeTracker tracker = new(TimeSpan.FromSeconds(10));
+    // Back 10 s after the game closes (a launcher restarting it doesn't bounce the apps); Auto mode counts down 10 s
+    // before starting, so a misdetection or an unsaved file can be saved with one click.
+    private readonly AutoModeTracker tracker = new(TimeSpan.FromSeconds(10), startDelay: TimeSpan.FromSeconds(10));
     private readonly IdleReminder reminder = new(TimeSpan.FromHours(2));
     private Dictionary<int, string> loggedGames = [];
     private Mutex? instance;
@@ -279,7 +281,10 @@ public partial class App : Application
                 LogGames(games);
                 vm.SetPlaying(gaming ? found.Where(g => g.Path is not null).Select(g => (GameRules.DisplayName(g.Path!, vm.GameRoots), g.Path!)).ToList() : []);
                 // Automatic switches never show or activate the window; only the tray tooltip changes.
-                if (tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode, canSwitch: vm.CanVibeAct) != AutoAction.None)
+                var action = tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode, canSwitch: vm.CanVibeAct);
+                if (action == AutoAction.StartSoon)
+                    AnnounceAutoStart(found.FirstOrDefault(g => g.Path is not null).Path, vm.CurrentGamePids);
+                else if (action != AutoAction.None)
                     await vm.ToggleModeAsync(automatic: true);
                 else if (gaming && vm.SessionStartedUtc is { } since
                          && reminder.Due(games.Count > 0, AcceptsNotifications(), since, DateTime.UtcNow))
@@ -329,6 +334,24 @@ public partial class App : Application
     private static extern bool SetProcessWorkingSetSize(IntPtr process, nint min, nint max);
 
     /// <summary>Games coming and going, so "why didn't it switch back?" has an answer in the log.</summary>
+    /// <summary>Auto mode's countdown: "Gaming mode in 10 seconds", and a click keeps the apps open.</summary>
+    private void AnnounceAutoStart(string? gamePath, IReadOnlyCollection<int> gamePids)
+    {
+        string name = gamePath is null ? "A game" : GameRules.DisplayName(gamePath, vm!.GameRoots);
+        Log.Write($"Auto mode: {name} started, gaming mode in 10 seconds");
+        tray?.Notify("Gaming mode in 10 seconds", $"{name} started. Click here to keep your apps open.", () =>
+        {
+            if (vm!.Mode == Mode.Gaming) // too late (clicked from the notification centre): show Back to vibe coding
+            {
+                ShowWindow();
+                return;
+            }
+            tracker.CancelStart(gamePids);
+            Log.Write($"Auto mode: kept apps open for {name}");
+            tray?.Notify("Keeping your apps open", $"Auto mode leaves {name} alone until another game starts.");
+        });
+    }
+
     private void LogGames(Dictionary<int, string> games)
     {
         foreach (var g in games.Where(g => !loggedGames.ContainsKey(g.Key))) Log.Write("Game running: " + g.Value);

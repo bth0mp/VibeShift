@@ -277,7 +277,7 @@
                             <StackPanel Margin="0,0,12,0">
                                 <TextBlock Text="Auto mode" />
                                 <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
-                                           Text="Switch to gaming when a game starts, and back 10 seconds after it closes." />
+                                           Text="Switch to gaming 10 seconds after a game starts (click the notification to keep your apps open), and back 10 seconds after it closes." />
                             </StackPanel>
                         </DockPanel>
                         <Rectangle Height="1" Fill="{DynamicResource BorderBrush}" Margin="0,11" />

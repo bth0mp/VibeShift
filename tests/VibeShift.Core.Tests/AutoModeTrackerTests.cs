@@ -20,6 +20,43 @@ public class AutoModeTrackerTests
         Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddSeconds(11)));
     }
 
+    private readonly AutoModeTracker C = new(TimeSpan.FromSeconds(10), startDelay: TimeSpan.FromSeconds(10));
+
+    [Fact] // Auto mode says "Gaming mode in 10 seconds" first, so a click can keep the apps open
+    public void Auto_start_counts_down_then_switches()
+    {
+        Assert.Equal(AutoAction.StartSoon, C.Update(new[] { 7 }, Mode.Coding, t0));
+        Assert.Equal(AutoAction.None, C.Update(new[] { 7 }, Mode.Coding, t0.AddSeconds(3)));
+        Assert.Equal(AutoAction.StartGaming, C.Update(new[] { 7 }, Mode.Coding, t0.AddSeconds(10)));
+    }
+
+    [Fact]
+    public void Cancelled_countdown_leaves_that_game_alone_until_a_new_one()
+    {
+        C.Update(new[] { 7 }, Mode.Coding, t0);
+        C.CancelStart(new[] { 7 });
+        Assert.Equal(AutoAction.None, C.Update(new[] { 7 }, Mode.Coding, t0.AddSeconds(20)));
+        Assert.Equal(AutoAction.StartSoon, C.Update(new[] { 7, 9 }, Mode.Coding, t0.AddSeconds(23)));
+    }
+
+    [Fact] // a splash or launcher that closes before the countdown ends starts nothing; the real game counts afresh
+    public void Countdown_starts_over_when_the_game_is_gone_before_it_ends()
+    {
+        C.Update(new[] { 7 }, Mode.Coding, t0);
+        Assert.Equal(AutoAction.None, C.Update(None, Mode.Coding, t0.AddSeconds(4)));
+        Assert.Equal(AutoAction.StartSoon, C.Update(new[] { 8 }, Mode.Coding, t0.AddSeconds(6)));
+        Assert.Equal(AutoAction.None, C.Update(new[] { 8 }, Mode.Coding, t0.AddSeconds(12)));
+        Assert.Equal(AutoAction.StartGaming, C.Update(new[] { 8 }, Mode.Coding, t0.AddSeconds(16)));
+    }
+
+    [Fact]
+    public void Countdown_that_ran_out_while_busy_switches_once_it_can()
+    {
+        C.Update(new[] { 7 }, Mode.Coding, t0);
+        Assert.Equal(AutoAction.None, C.Update(new[] { 7 }, Mode.Coding, t0.AddSeconds(12), canSwitch: false));
+        Assert.Equal(AutoAction.StartGaming, C.Update(new[] { 7 }, Mode.Coding, t0.AddSeconds(15)));
+    }
+
     [Fact] // audit A1: the game closed while the Vibe page was opening an app; the switch back must wait, not vanish
     public void Switch_back_waits_while_VibeShift_is_busy()
     {

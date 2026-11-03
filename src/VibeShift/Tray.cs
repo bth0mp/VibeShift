@@ -81,8 +81,10 @@ public sealed class Tray : IDisposable
         {
             if (e.Button == MouseButtons.Left) open();
         };
-        icon.BalloonTipClicked += (_, _) => open();
+        icon.BalloonTipClicked += (_, _) => (balloonClick ?? open)();
     }
+
+    private Action? balloonClick;
 
     public void Update(Mode mode)
     {
@@ -92,8 +94,15 @@ public sealed class Tray : IDisposable
         toggleItem.Text = gaming ? "Back to vibe coding" : "Start gaming";
     }
 
-    /// <summary>A Windows notification, e.g. "Back to vibe coding: opened Claude, ChatGPT". Only used once you've stopped playing.</summary>
-    public void Notify(string title, string text) => icon.ShowBalloonTip(5000, title, text, ToolTipIcon.None);
+    /// <summary>
+    /// A Windows notification, e.g. "Back to vibe coding: opened Claude, ChatGPT". A click opens VibeShift, or runs
+    /// <paramref name="onClick"/> (Auto mode's "keep my apps open"). Windows holds these back while a game runs full screen.
+    /// </summary>
+    public void Notify(string title, string text, Action? onClick = null)
+    {
+        balloonClick = onClick;
+        icon.ShowBalloonTip(5000, title, text, ToolTipIcon.None);
+    }
 
     public void Dispose()
     {
