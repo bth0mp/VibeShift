@@ -1,24 +1,27 @@
 name: release
 
-# Pushing a v* tag builds, tests and publishes VibeShift.exe on a clean runner and attaches it to a DRAFT release.
-# Nothing reaches users, or the in-app update check (it reads releases/latest), until the draft is published by hand.
-# Run it from the Actions tab for a dry run: the same build, with the exe kept as a workflow artifact and no release.
+# Pushing a v* tag builds, tests and publishes VibeShift.exe on a clean runner, signs its build provenance and
+# attaches it to a DRAFT release. Nothing reaches users, or the in-app update check (it reads releases/latest),
+# until the draft is published by hand.
+# Run it from the Actions tab for a dry run: the same build and tests, with the exe kept as a workflow artifact,
+# no provenance and no release.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: write     # create the draft release
-  id-token: write     # sign the build provenance
-  attestations: write
+  contents: read
 
 jobs:
-  release:
+  # Runs the repo's code and its NuGet packages, so it holds no write or signing permission.
+  build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
       - name: Tag matches <Version>
@@ -31,22 +34,36 @@ jobs:
       - run: dotnet test VibeShift.sln -c Release --no-build
       # Uncompressed on purpose: compression doubles VibeShift's RAM use.
       - run: dotnet publish src/VibeShift -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
-      # Lets anyone check the exe came from this repo and workflow: gh attestation verify VibeShift.exe -R bth0mp/VibeShift
-      - uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: publish/VibeShift.exe
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: VibeShift
           path: publish/VibeShift.exe
           retention-days: 14
+
+  # Tag pushes only. It runs no repo code: it signs and drafts the exe the build job made.
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # the draft release
+      id-token: write     # signing the provenance
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: VibeShift
+      # Anyone can check a download: gh attestation verify VibeShift.exe -R bth0mp/VibeShift
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: VibeShift.exe
       - name: Draft release
-        if: github.ref_type == 'tag'
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          $hash = (Get-FileHash publish/VibeShift.exe -Algorithm SHA256).Hash
-          $notes = "SHA-256 of VibeShift.exe: ``$hash```n`nBuilt and tested by [this workflow run]($env:RUN_URL)."
-          gh release create $env:GITHUB_REF_NAME publish/VibeShift.exe --draft --verify-tag --title "VibeShift $($env:GITHUB_REF_NAME.TrimStart('v'))" --notes $notes
+          hash=$(sha256sum VibeShift.exe | cut -d' ' -f1 | tr a-f A-F)
+          printf 'SHA-256 of VibeShift.exe: `%s`\n\nBuilt and tested by [this workflow run](%s).\n' "$hash" "$RUN_URL" > notes.md
+          gh release create "$TAG" VibeShift.exe --draft --verify-tag --title "VibeShift ${TAG#v}" --notes-file notes.md
