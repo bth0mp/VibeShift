@@ -78,7 +78,7 @@ If another app already uses one of these, Settings says so.
 - **Settings → About → Check for updates** asks GitHub for the latest release. If there's a newer one, one click downloads it, checks it against the SHA-256 GitHub publishes for it, swaps it in and restarts VibeShift. Your settings and any gaming session carry over.
 - Turn on **Check for updates automatically** to have VibeShift check once a day. It's off until you turn it on, and VibeShift never updates without your click.
 
-Closing the window keeps VibeShift running as a small icon by the clock, with a green dot in vibe coding mode and a purple one while gaming. Right-click it to switch modes or quit. Windows 11 tucks new icons under the **^** arrow; drag it onto the taskbar to keep it in sight, and turn on **Start with Windows** in Settings so it's always there.
+Closing the window keeps VibeShift running as a small icon by the clock, with a green dot in vibe coding mode and a purple one while gaming. Right-click it to switch modes or quit. Quitting in gaming mode asks first, since the apps it closed would stay closed: **Reopen and quit** brings them back. Windows 11 tucks new icons under the **^** arrow; drag it onto the taskbar to keep it in sight, and turn on **Start with Windows** in Settings so it's always there.
 
 ## What it can close
 

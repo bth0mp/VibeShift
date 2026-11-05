@@ -545,6 +545,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>A gaming session is in progress (session.json exists).</summary>
     public bool HasSession => session is not null;
 
+    /// <summary>What Back to vibe coding would reopen, by name.</summary>
+    public IReadOnlyList<string> ReopenNames => session?.Closed.Select(c => c.Name).Distinct().ToList() ?? [];
+
     public DateTime? SessionStartedUtc => session?.StartedUtc;
 
     /// <summary>What the last switch back opened, for the tray's welcome-back notification.</summary>

@@ -33,7 +33,7 @@ public partial class App : Application
     private Tray? tray;
     private Hotkeys? hotkeys;
     private GameWatcher? watcher;
-    private bool quitting, ticking, started;
+    private bool quitting, quitAsked, ticking, started;
     private const string InstanceName = @"Local\VibeShift.Instance";
 
     protected override void OnStartup(StartupEventArgs e)
@@ -108,7 +108,7 @@ public partial class App : Application
             window.Hide();
             Dispatcher.BeginInvoke(TrimMemory, DispatcherPriority.ApplicationIdle);
         };
-        tray = new Tray(ShowWindow, () => vm.ToggleModeAsync(automatic: false), Quit,
+        tray = new Tray(ShowWindow, () => vm.ToggleModeAsync(automatic: false), QuitFromTray,
             vm.OpenAllAsync, vm.CloseAllAsync, vm.VibeAppsNow, vm.SetVibeAppAsync,
             () => vm.CanPlay ? "Play " + vm.PlayTarget!.Name : null, vm.PlayAsync);
         hotkeys = new Hotkeys(window);
@@ -333,7 +333,6 @@ public partial class App : Application
     [DllImport("kernel32.dll")]
     private static extern bool SetProcessWorkingSetSize(IntPtr process, nint min, nint max);
 
-    /// <summary>Games coming and going, so "why didn't it switch back?" has an answer in the log.</summary>
     /// <summary>Auto mode's countdown: "Gaming mode in 10 seconds", and a click keeps the apps open.</summary>
     private void AnnounceAutoStart(string? gamePath, IReadOnlyCollection<int> gamePids)
     {
@@ -352,6 +351,7 @@ public partial class App : Application
         });
     }
 
+    /// <summary>Games coming and going, so "why didn't it switch back?" has an answer in the log.</summary>
     private void LogGames(Dictionary<int, string> games)
     {
         foreach (var g in games.Where(g => !loggedGames.ContainsKey(g.Key))) Log.Write("Game running: " + g.Value);
@@ -374,6 +374,41 @@ public partial class App : Application
         _ = vm?.RefreshAsync();
     }
 
+    /// <summary>
+    /// The tray's Quit. In gaming mode it asks first: quitting there left the apps closed with nothing to say so
+    /// (2026-11-02), until VibeShift was started again and switched back.
+    /// </summary>
+    private async void QuitFromTray()
+    {
+        if (vm is null || quitAsked) return;
+        quitAsked = true;
+        try
+        {
+            // Out of the menu's click handler first. A modal loop inside it got the menu's Enter (keyboard, or UI Automation's
+            // Invoke): the dialog's default button fired unseen and reopened the apps (2026-11-05 live test).
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            while (!vm.CanVibeAct) await Task.Delay(200); // never quit mid-switch: half the apps closed, no session yet
+            if (vm.Mode == Mode.Gaming)
+            {
+                var dialog = new QuitDialog(vm.ReopenNames);
+                dialog.ShowDialog();
+                if (dialog.Choice == QuitChoice.Cancel) return;
+                if (dialog.Choice == QuitChoice.ReopenAndQuit) await vm.ToggleModeAsync(automatic: false);
+                if (vm.Mode == Mode.Gaming) Log.Write("Quit in gaming mode: apps left closed");
+            }
+            Log.Write("Quit");
+            Quit();
+        }
+        catch (Exception e)
+        {
+            Log.Write("Quit failed: " + e.Message);
+        }
+        finally
+        {
+            quitAsked = false;
+        }
+    }
+
     private void Quit()
     {
         quitting = true;
@@ -393,20 +428,20 @@ public partial class App : Application
         ThemeManager.Apply(theme == "light" ? ThemeChoice.Light : ThemeChoice.Dark, highContrast: theme == "contrast");
         var demoVm = new MainViewModel(new JsonStore(Path.GetTempPath()), new Settings(), demo: true);
         demoVm.LoadDemo(demoMode == "gaming" ? Mode.Gaming : Mode.Coding);
-        var w = new MainWindow(demoVm)
-        {
-            WindowStartupLocation = WindowStartupLocation.Manual,
-            Left = -10000,
-            Top = -10000,
-            ShowInTaskbar = false,
-            ShowActivated = false,
-        };
-        w.ShowPage(page);
+        // --page quit: the dialog Quit shows in gaming mode
+        Window w = page == "quit" ? new QuitDialog(["Claude", "Wallpaper Engine", "PowerToys"]) : new MainWindow(demoVm);
+        w.WindowStartupLocation = WindowStartupLocation.Manual;
+        w.Left = -10000;
+        w.Top = -10000;
+        w.ShowInTaskbar = false;
+        w.ShowActivated = false;
+        w.Topmost = false;
+        (w as MainWindow)?.ShowPage(page);
         w.ContentRendered += (_, _) =>
         {
-            if (bottom) // --bottom: the end of the Settings page, which is taller than the window
+            if (bottom && w is MainWindow main) // --bottom: the end of the Settings page, which is taller than the window
             {
-                w.SettingsScroll.ScrollToEnd();
+                main.SettingsScroll.ScrollToEnd();
                 w.UpdateLayout();
             }
             var root = (FrameworkElement)w.Content;
