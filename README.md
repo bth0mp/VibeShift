@@ -152,6 +152,12 @@ The exe ends up in `publish\VibeShift.exe`. It isn't compressed on purpose: a co
 
 Every push to `main` is built and tested on GitHub Actions, and each run's exe can be downloaded from its Actions page for 14 days.
 
+Releases after 1.8.0 are built the same way, on a clean GitHub runner rather than a PC: pushing a `v*` tag builds and tests the exe, records signed build provenance, and attaches it to a draft release. To check that a downloaded `VibeShift.exe` was built from this repo, run:
+
+```
+gh attestation verify VibeShift.exe -R bth0mp/VibeShift
+```
+
 ## License
 
 [MIT](LICENSE)

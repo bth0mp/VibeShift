@@ -1,0 +1,52 @@
+name: release
+
+# Pushing a v* tag builds, tests and publishes VibeShift.exe on a clean runner and attaches it to a DRAFT release.
+# Nothing reaches users, or the in-app update check (it reads releases/latest), until the draft is published by hand.
+# Run it from the Actions tab for a dry run: the same build, with the exe kept as a workflow artifact and no release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write     # create the draft release
+  id-token: write     # sign the build provenance
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Tag matches <Version>
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path src/VibeShift/VibeShift.csproj -Pattern '<Version>(.+)</Version>').Matches[0].Groups[1].Value
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME doesn't match <Version>$v</Version> in VibeShift.csproj" }
+      - run: dotnet build VibeShift.sln -c Release
+      - run: dotnet test VibeShift.sln -c Release --no-build
+      # Uncompressed on purpose: compression doubles VibeShift's RAM use.
+      - run: dotnet publish src/VibeShift -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+      # Lets anyone check the exe came from this repo and workflow: gh attestation verify VibeShift.exe -R bth0mp/VibeShift
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: publish/VibeShift.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: VibeShift
+          path: publish/VibeShift.exe
+          retention-days: 14
+      - name: Draft release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $hash = (Get-FileHash publish/VibeShift.exe -Algorithm SHA256).Hash
+          $notes = "SHA-256 of VibeShift.exe: ``$hash```n`nBuilt and tested by [this workflow run]($env:RUN_URL)."
+          gh release create $env:GITHUB_REF_NAME publish/VibeShift.exe --draft --verify-tag --title "VibeShift $($env:GITHUB_REF_NAME.TrimStart('v'))" --notes $notes
