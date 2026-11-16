@@ -102,19 +102,28 @@ public sealed class StateTests : IDisposable
     }
 
     [Fact] // antivirus or a backup tool holding session.json for a moment must not leave gaming mode stuck on disk
-    public async Task Clearing_the_session_waits_out_a_brief_lock()
+    public void Clearing_the_session_waits_out_a_brief_lock()
     {
         var store = Store();
         store.SaveSession(new SessionState());
         var path = Path.Combine(dir, "session.json");
         var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
-        var release = Task.Run(async () =>
+        // Released from its own thread, not the pool: on CI's two cores a pool task started too late, after the
+        // 800 ms of retries had run out (the first version of this test failed there).
+        var release = new Thread(() =>
         {
-            await Task.Delay(300);
+            Thread.Sleep(100);
             locked.Dispose();
         });
-        store.ClearSession();
-        await release;
+        release.Start();
+        try
+        {
+            store.ClearSession();
+        }
+        finally
+        {
+            release.Join(); // so the folder can be deleted whatever happened
+        }
         Assert.False(File.Exists(path));
     }
 
