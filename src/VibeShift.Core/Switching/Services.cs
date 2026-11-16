@@ -29,6 +29,26 @@ public static class Services
         }
     }
 
+    /// <summary>One of the services the elevated helper accepts; anything else in a hand-edited file is ignored.</summary>
+    public static bool IsAllowed(string name) => Allowed.Contains(name);
+
+    /// <summary>
+    /// Exists, is stopped, and could be started again. A service missing from this PC, or one the user disabled,
+    /// isn't "paused by VibeShift": asking to restart it would only bring up an admin prompt that can't help.
+    /// </summary>
+    public static bool IsStopped(string name)
+    {
+        try
+        {
+            using var sc = new ServiceController(name);
+            return sc.Status == ServiceControllerStatus.Stopped && sc.StartType != ServiceStartMode.Disabled;
+        }
+        catch (InvalidOperationException)
+        {
+            return false; // no such service
+        }
+    }
+
     public static (string Verb, string[] Names)? ParseHelperArgs(string[] args)
     {
         if (args.Length != 3 || args[0] != "--services" || args[1] is not ("stop" or "start")) return null;

@@ -177,4 +177,27 @@ public class GameTests
         Assert.Equal(new[] { 50 }, w.Scan(snap));
         Assert.Equal(1, pathCalls);
     }
+
+    [Fact] // 2026-11 audit: one failed read (the process just started, anti-cheat holds it) hid that game for its whole life
+    public void Watcher_retries_a_path_it_could_not_read()
+    {
+        string? path = null;
+        var w = new GameWatcher(new[] { Root }, Array.Empty<string>(), _ => path, _ => true);
+        var snap = new[] { new ProcInfo(50, 1, "g", 10, 100) };
+        Assert.Empty(w.Scan(snap));
+        path = Root + @"\G\g.exe";
+        Assert.Equal(new[] { 50 }, w.Scan(snap));
+    }
+
+    [Theory] // 2026-11 audit: these threw InvalidOperationException, which stopped every store's detection, not just Epic's
+    [InlineData("[]")]
+    [InlineData("5")]
+    [InlineData("{\"InstallLocation\": 5}")]
+    [InlineData("{\"InstallLocation\": \"D:\\\\Epic\\\\X\", \"AppCategories\": [1]}")]
+    [InlineData("{\"AppName\": 7, \"AppCategories\": {}}")]
+    public void Odd_epic_manifests_are_skipped_without_throwing(string json)
+    {
+        _ = GameLibraries.ParseEpicInstallLocation(json); // must not throw
+        Assert.Null(GameLibraries.ParseEpicGame(json));
+    }
 }

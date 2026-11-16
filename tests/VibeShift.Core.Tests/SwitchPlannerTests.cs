@@ -229,6 +229,43 @@ public class SwitchPlannerTests
         Assert.Equal(new[] { "chatgpt" }, SwitchPlanner.PlanReopen(session, running).Select(c => c.EntryId));
     }
 
+    [Fact] // 2026-11 audit: Chrome and Firefox closed for gaming, Edge opened mid-game: the row was "running", so neither came back
+    public void One_open_browser_does_not_stop_the_other_closed_browsers_reopening()
+    {
+        var session = new SessionState
+        {
+            Closed =
+            {
+                new("browsers", "Web browsers", @"C:\Program Files\Google\Chrome\Application\chrome.exe", null),
+                new("browsers", "Web browsers", @"C:\Program Files\Mozilla Firefox\firefox.exe", null),
+            },
+        };
+        var edgeOnly = Detect(new[] { P(1, 0, "msedge"), P(2, 1, "msedge") });
+        Assert.Equal(2, SwitchPlanner.PlanReopen(session, edgeOnly).Count);
+        Assert.Equal(2, SwitchPlanner.PlanVibeLaunch(session, edgeOnly, [], new Dictionary<string, ClosedApp>()).Count);
+
+        var chromeBack = Detect(new[] { P(1, 0, "msedge"), P(5, 0, "chrome") });
+        Assert.Equal(new[] { @"C:\Program Files\Mozilla Firefox\firefox.exe" }, SwitchPlanner.PlanReopen(session, chromeBack).Select(c => c.ExePath));
+    }
+
+    [Theory] // Edge's startup boost process keeps --no-startup-window for life, even once it hosts the user's windows
+    [InlineData("\"msedge.exe\" --no-startup-window --win-session-start", false, true)]  // really background only: nothing to restore
+    [InlineData("\"msedge.exe\" --no-startup-window --win-session-start", true, false)]  // the user's browser: reopen it
+    [InlineData("\"msedge.exe\" --profile-directory=Default", false, false)]
+    [InlineData(null, false, false)]
+    public void A_browser_is_background_only_when_started_that_way_and_still_windowless(string? cmd, bool window, bool expected) =>
+        Assert.Equal(expected, SwitchPlanner.IsBackgroundOnly(cmd, window));
+
+    [Fact] // hand-edited settings: Docker / WSL marked "open when gaming" with its close toggle still on
+    public void Wsl_is_not_shut_down_for_a_row_opened_for_gaming()
+    {
+        settings.Toggles["docker-wsl"] = true;
+        settings.GameApps.Add("docker-wsl");
+        var plan = Plan(new[] { P(1, 0, "Docker Desktop"), P(2, 0, "vmmemWSL") });
+        Assert.False(plan.ShutdownWsl);
+        Assert.Empty(plan.ClosedEntryIds);
+    }
+
     [Fact]
     public void Blocked_processes_are_never_detected() =>
         Assert.DoesNotContain(Detect(new[] { P(5, 0, "Cursor") }, blocked: p => p.Pid == 5), d => d.Entry.Id == "cursor");

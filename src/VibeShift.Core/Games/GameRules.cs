@@ -77,7 +77,7 @@ public sealed class GameWatcher(
     int? sessionId = null, // only this logon session's games count; null = any (tests)
     IReadOnlyList<string>? notGames = null)
 {
-    private readonly Dictionary<(int Pid, long CreateTime), string?> paths = [];
+    private readonly Dictionary<(int Pid, long CreateTime), string> paths = [];
 
     /// <summary>Thread-safe: Auto mode's poll and a manual switch may both scan.</summary>
     public IReadOnlyCollection<int> Scan(IReadOnlyList<ProcInfo> snapshot)
@@ -94,8 +94,13 @@ public sealed class GameWatcher(
             if (sessionId is { } mine && p.SessionId != mine) continue;
             var key = (p.Pid, p.CreateTime);
             live.Add(key);
-            if (!paths.TryGetValue(key, out var path)) paths[key] = path = imagePath(p.Pid);
-            if (path is null) continue;
+            if (!paths.TryGetValue(key, out var path))
+            {
+                // Only a path that was read is remembered: one failed read (the process just started, anti-cheat holds
+                // it) must not hide a game for its whole life. Unreadable processes are simply asked again next poll.
+                if (imagePath(p.Pid) is not { } read) continue;
+                paths[key] = path = read;
+            }
             // My games always count; a found game counts unless the user said it isn't one ("Not a game").
             if (GameRules.IsMyGame(path, myGames)
                 || (GameRules.IsCandidate(path, roots) && !GameRules.IsMyGame(path, notGames ?? []) && hasVisibleWindow(p.Pid)))

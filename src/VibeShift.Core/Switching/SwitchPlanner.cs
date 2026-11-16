@@ -114,7 +114,7 @@ public static class SwitchPlanner
 
         var vm = WslVm(all);
         var dockerWsl = detected.FirstOrDefault(d => d.Entry.Kind == EntryKind.DockerWsl);
-        bool shutdownWsl = dockerWsl is not null && s.IsOn(dockerWsl.Entry) && vm.Count > 0;
+        bool shutdownWsl = dockerWsl is not null && Closes(dockerWsl.Entry) && vm.Count > 0;
 
         // Each process frees its RAM once, however many rows it belongs to.
         var byPid = new Dictionary<int, ProcInfo>();
@@ -186,13 +186,35 @@ public static class SwitchPlanner
         IReadOnlyCollection<string> vibeApps,
         IReadOnlyDictionary<string, ClosedApp> known)
     {
-        var running = runningNow.Where(d => d.Roots.Count > 0).Select(d => d.Entry.Id).ToHashSet();
-        var plan = session.Closed.Where(c => !running.Contains(c.EntryId)).ToList();
+        var running = RunningById(runningNow);
+        var plan = session.Closed.Where(c => !IsRunningAgain(c, running)).ToList();
         foreach (var id in vibeApps)
-            if (!running.Contains(id) && plan.All(c => c.EntryId != id) && known.TryGetValue(id, out var target))
+            if (!running.ContainsKey(id) && plan.All(c => c.EntryId != id) && known.TryGetValue(id, out var target))
                 plan.Add(target);
         return plan;
     }
+
+    private static Dictionary<string, Detected> RunningById(IReadOnlyList<Detected> runningNow) =>
+        runningNow.Where(d => d.Roots.Count > 0).ToDictionary(d => d.Entry.Id);
+
+    /// <summary>
+    /// Is this closed app open again? A row with several launchers (Web browsers) is checked exe by exe: Edge being
+    /// open says nothing about Chrome, which was closed under the same row.
+    /// </summary>
+    private static bool IsRunningAgain(ClosedApp c, Dictionary<string, Detected> running)
+    {
+        if (!running.TryGetValue(c.EntryId, out var d)) return false;
+        if (d.Entry.Launchers is not { Length: > 1 } || c.ExePath is null) return true;
+        var exe = Path.GetFileNameWithoutExtension(c.ExePath);
+        return d.Matched.Any(m => m.Name.Equals(exe, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// A browser Windows started in the background (Edge's startup boost) and that still has no window: there is
+    /// nothing to bring back. The flag alone isn't enough: that same process keeps it once it hosts the user's windows.
+    /// </summary>
+    public static bool IsBackgroundOnly(string? commandLine, bool hasVisibleWindow) =>
+        !hasVisibleWindow && commandLine?.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>The processes to relaunch an app by: its launcher exes, topmost first (see CatalogEntry.Launchers).</summary>
     public static IReadOnlyList<ProcInfo> LauncherRoots(IReadOnlyList<ProcInfo> all, Detected d)
@@ -205,8 +227,8 @@ public static class SwitchPlanner
     /// <summary>What to reopen, in closing order, minus apps that are already running again.</summary>
     public static IReadOnlyList<ClosedApp> PlanReopen(SessionState session, IReadOnlyList<Detected> runningNow)
     {
-        var running = runningNow.Where(d => d.Roots.Count > 0).Select(d => d.Entry.Id).ToHashSet();
-        return session.Closed.Where(c => !running.Contains(c.EntryId)).ToList();
+        var running = RunningById(runningNow);
+        return session.Closed.Where(c => !IsRunningAgain(c, running)).ToList();
     }
 
     /// <summary>

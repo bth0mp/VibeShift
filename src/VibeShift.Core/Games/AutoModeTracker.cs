@@ -2,7 +2,7 @@ namespace VibeShift.Core.Games;
 
 public enum Mode { Coding, Gaming }
 
-public enum AutoAction { None, StartSoon, StartGaming, BackToCoding }
+public enum AutoAction { None, StartSoon, StartGaming, BackToCoding, Ask }
 
 /// <summary>
 /// Decides when VibeShift switches by itself. Auto mode starts gaming when a game starts. Switching back
@@ -20,16 +20,23 @@ public sealed class AutoModeTracker(TimeSpan backDelay, TimeSpan startDelay = de
     private bool returnArmed; // switch back once this session's games have closed
     private bool sawGame;
     private DateTime lastGameSeen;
-    private DateTime? countdownSince; // Auto mode saw a new game and is about to start gaming mode
+    private DateTime? countdownSince; // a new game was seen: Auto mode is counting down, or "Ask me" has asked
 
-    /// <param name="autoStart">Auto mode is on: a new game may start gaming mode.</param>
+    /// <param name="autoStart">Auto mode (or "Ask me") is on: a new game may start gaming mode, or ask to.</param>
     /// <param name="canSwitch">
     /// False while VibeShift is busy (the Vibe page opening an app): games are still counted, but no switch is due
     /// yet, so the switch back isn't used up by a switch that couldn't run.
     /// </param>
-    public AutoAction Update(IReadOnlyCollection<int> gamePids, Mode mode, DateTime nowUtc, bool autoStart = true, bool canSwitch = true)
+    /// <param name="alive">
+    /// Every running process. A game the user said to leave alone stays left alone while its process lives, not
+    /// just while it's detected: between a splash and the main window a game has no window, so it drops out of
+    /// <paramref name="gamePids"/> for a tick. Null (tests) falls back to the detected games.
+    /// </param>
+    /// <param name="askOnly">"Ask me": a new game gives Ask once, and nothing switches until the user does.</param>
+    public AutoAction Update(IReadOnlyCollection<int> gamePids, Mode mode, DateTime nowUtc, bool autoStart = true, bool canSwitch = true,
+        IReadOnlyCollection<int>? alive = null, bool askOnly = false)
     {
-        suppressed.IntersectWith(gamePids);
+        suppressed.IntersectWith(alive ?? gamePids);
 
         if (mode == Mode.Coding)
         {
@@ -40,6 +47,7 @@ public sealed class AutoModeTracker(TimeSpan backDelay, TimeSpan startDelay = de
             }
             bool fresh = countdownSince is null;
             countdownSince ??= nowUtc;
+            if (askOnly) return fresh ? AutoAction.Ask : AutoAction.None;
             if (canSwitch && nowUtc - countdownSince >= startDelay)
             {
                 countdownSince = null;
@@ -68,9 +76,13 @@ public sealed class AutoModeTracker(TimeSpan backDelay, TimeSpan startDelay = de
     /// is seen and closes (if the setting is on): with nothing running it might be about to start, or be a
     /// game VibeShift can't recognise.
     /// </summary>
-    public void Resume(bool automatic, bool returnWhenGameCloses, DateTime nowUtc)
+    /// <param name="signedOutSince">
+    /// The session is from before the last sign-out or shutdown, which closed the game whatever it was. With
+    /// "switch back when my game closes" on, that counts as the game closing.
+    /// </param>
+    public void Resume(bool automatic, bool returnWhenGameCloses, DateTime nowUtc, bool signedOutSince = false)
     {
-        if (automatic) Arm(nowUtc);
+        if (automatic || (signedOutSince && returnWhenGameCloses)) Arm(nowUtc);
         else ManualSwitch(Mode.Gaming, [], returnWhenGameCloses);
     }
 
@@ -88,6 +100,12 @@ public sealed class AutoModeTracker(TimeSpan backDelay, TimeSpan startDelay = de
         returnArmed = newMode == Mode.Gaming && returnWhenGameCloses;
         if (newMode == Mode.Coding) suppressed.UnionWith(gamePidsNow);
     }
+
+    /// <summary>
+    /// "Switch back when my game closes" was changed in the middle of a session started by hand: it applies from now
+    /// on, not from the next switch. Turned on, the switch back waits for a game seen from here on to close.
+    /// </summary>
+    public void SetReturnWhenGameCloses(bool on) => returnArmed = on;
 
     private void Arm(DateTime nowUtc)
     {

@@ -36,9 +36,9 @@ public static partial class GameLibraries
                 return null;
             return root.TryGetProperty("InstallLocation", out var v) ? v.GetString() : null;
         }
-        catch (JsonException)
+        catch (Exception e) when (e is JsonException or InvalidOperationException)
         {
-            return null;
+            return null; // not JSON, or a value of the wrong kind ("InstallLocation": 5): not a game we can read
         }
     }
 
@@ -76,9 +76,9 @@ public static partial class GameLibraries
             return new InstalledGame("epic:" + app, Get("DisplayName") ?? app,
                 $"com.epicgames.launcher://apps/{id}?action=launch&silent=true", DateTime.MinValue);
         }
-        catch (JsonException)
+        catch (Exception e) when (e is JsonException or InvalidOperationException)
         {
-            return null;
+            return null; // not JSON, or a value of the wrong kind ("InstallLocation": 5): not a game we can read
         }
     }
 
@@ -93,7 +93,7 @@ public static partial class GameLibraries
                 var apps = Path.Combine(lib, "steamapps");
                 if (!Directory.Exists(apps)) continue;
                 foreach (var acf in Directory.GetFiles(apps, "appmanifest_*.acf"))
-                    if (ParseSteamAppManifest(File.ReadAllText(acf)) is { } g) games.Add(g);
+                    Try(() => { if (ParseSteamAppManifest(File.ReadAllText(acf)) is { } g) games.Add(g); }); // one locked file skips one game
             }
         });
         Try(() =>
@@ -101,7 +101,7 @@ public static partial class GameLibraries
             var dir = EpicManifestDir();
             if (!Directory.Exists(dir)) return;
             foreach (var item in Directory.GetFiles(dir, "*.item"))
-                if (ParseEpicGame(File.ReadAllText(item)) is { } g) games.Add(g);
+                Try(() => { if (ParseEpicGame(File.ReadAllText(item)) is { } g) games.Add(g); });
         });
         foreach (var exe in myGames)
             games.Add(new InstalledGame("exe:" + exe.ToLowerInvariant(), Catalog.AppCatalog.Custom(exe).Name, exe, DateTime.MinValue));
@@ -210,10 +210,10 @@ public static partial class GameLibraries
     {
         var dir = EpicManifestDir();
         if (!Directory.Exists(dir)) return [];
-        return Directory.GetFiles(dir, "*.item")
-            .Select(f => ParseEpicInstallLocation(File.ReadAllText(f)))
-            .OfType<string>()
-            .ToList();
+        var paths = new List<string>();
+        foreach (var item in Directory.GetFiles(dir, "*.item"))
+            Try(() => { if (ParseEpicInstallLocation(File.ReadAllText(item)) is { } path) paths.Add(path); });
+        return paths;
     }
 
     private static IEnumerable<string> Gog()
@@ -232,7 +232,9 @@ public static partial class GameLibraries
     private static void Try(Action source)
     {
         try { source(); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        // InvalidOperationException: a registry value or manifest field of an unexpected kind. Whatever one launcher's
+        // records hold, the other stores' games must still be found.
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException)
         {
             State.Log.Write("Game library source skipped: " + e.Message);
         }

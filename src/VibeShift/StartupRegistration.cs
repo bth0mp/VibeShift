@@ -11,6 +11,9 @@ public static class StartupRegistration
 
     public static void Set(bool on)
     {
+        // A copy with its own data folder (a test run, a portable copy) must not repoint the real one's Run entry
+        // at itself: the next sign-in would start that exe against the user's real data.
+        if (Environment.GetEnvironmentVariable(VibeShift.Core.State.JsonStore.DataDirVariable) is { Length: > 0 }) return;
         using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true) ?? Registry.CurrentUser.CreateSubKey(RunKey);
         if (on) key.SetValue(Name, $"\"{Environment.ProcessPath}\" --tray");
         else key.DeleteValue(Name, throwOnMissingValue: false);

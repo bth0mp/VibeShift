@@ -46,6 +46,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         PlayCommand = new RelayCommand(PlayAsync);
         CheckUpdatesCommand = new RelayCommand(() => CheckUpdatesAsync(quiet: false));
         UpdateCommand = new RelayCommand(UpdateAsync);
+        RestartServicesCommand = new RelayCommand(RestartServicesAsync);
         MyGames = new ObservableCollection<string>(settings.MyGames);
         NotGames = new ObservableCollection<string>(settings.NotGames);
         NotAGameCommand = new RelayCommand(() =>
@@ -147,13 +148,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private int gamesLoad;
+
     public async Task LoadGamesAsync()
     {
         if (demo) return;
+        // Every settings save reloads the list: only the latest load may land, or a slow first one overwrites it.
+        int load = ++gamesLoad;
         var mine = Settings.MyGames.ToList();
-        Games = await Task.Run(() => GameLibraries.InstalledGames(mine));
-        Raise(nameof(Games));
-        RaisePlay();
+        try
+        {
+            var games = await Task.Run(() => GameLibraries.InstalledGames(mine));
+            if (load != gamesLoad) return;
+            Games = games;
+            Raise(nameof(Games));
+            RaisePlay();
+        }
+        catch (Exception e)
+        {
+            Log.Write("Couldn't list installed games: " + e.Message);
+        }
     }
 
     /// <summary>One click from coding to in-game: switch to gaming mode (freeing the RAM first), then launch the game.</summary>
@@ -266,7 +280,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool updating;
 
     /// <summary>Raised once an update is swapped in: the App restarts into the exe at this path.</summary>
-    public event Action<string>? RestartRequested;
+    public event Func<string, bool>? RestartRequested;
 
     public ICommand CheckUpdatesCommand { get; }
     public ICommand UpdateCommand { get; }
@@ -341,7 +355,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             while (IsBusy || vibeBusy) await Task.Delay(200);
             Log.Write($"Updated to {r.Version.ToString(3)}, restarting");
             UpdateStatus = "Restarting...";
-            RestartRequested?.Invoke(exe);
+            // False: the new exe wouldn't start (antivirus, SmartScreen). This copy stays, so the tray icon and any
+            // gaming session aren't lost; the new version is on disk and runs next time.
+            if (RestartRequested?.Invoke(exe) != true) UpdateStatus = $"Updated to {r.Version.ToString(3)}. Quit and reopen VibeShift to finish.";
         }
         catch (Exception e)
         {
@@ -536,6 +552,44 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { Settings.ExtraBoost = value; SaveSettings(); Raise(); }
     }
 
+    // ----- Extra boost services a switch back couldn't restart -----
+
+    public ICommand RestartServicesCommand { get; }
+
+    /// <summary>Extra boost paused these and the switch back couldn't restart them (the admin prompt was cancelled or timed out).</summary>
+    public bool HasPausedServices => Settings.PausedServices.Count > 0;
+
+    public string PausedServicesText =>
+        $"{string.Join(" and ", Settings.PausedServices)} {(Settings.PausedServices.Count == 1 ? "is" : "are")} still paused: Windows asked for admin permission and didn't get it.";
+
+    private void SetPausedServices(IReadOnlyList<string> paused)
+    {
+        if (paused.SequenceEqual(Settings.PausedServices, StringComparer.OrdinalIgnoreCase)) return;
+        Settings.PausedServices = paused.ToList();
+        if (!demo) store.SaveSettings(Settings); // not SaveSettings(): nothing the game watcher or hotkeys care about changed
+        Raise(nameof(HasPausedServices));
+        Raise(nameof(PausedServicesText));
+    }
+
+    /// <summary>Settings: one admin prompt to restart the services still paused.</summary>
+    public async Task RestartServicesAsync()
+    {
+        if (!HasPausedServices || vibeBusy || IsBusy || demo) return;
+        SetVibeBusy(true);
+        try
+        {
+            SetPausedServices(await switcher.RestartServicesAsync(Settings.PausedServices.ToList()));
+        }
+        catch (Exception e)
+        {
+            Log.Write("Restarting services failed: " + e.Message);
+        }
+        finally
+        {
+            SetVibeBusy(false);
+        }
+    }
+
     public bool ReturnWhenGameCloses
     {
         get => Settings.ReturnWhenGameCloses;
@@ -546,7 +600,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool HasSession => session is not null;
 
     /// <summary>What Back to vibe coding would reopen, by name.</summary>
-    public IReadOnlyList<string> ReopenNames => session?.Closed.Select(c => c.Name).Distinct().ToList() ?? [];
+    public IReadOnlyList<string> ReopenNames =>
+        session?.Closed.Where(c => !(rows.TryGetValue(c.EntryId, out var row) && row.IsRunning)).Select(c => c.Name).Distinct().ToList() ?? [];
 
     public DateTime? SessionStartedUtc => session?.StartedUtc;
 
@@ -706,14 +761,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 foreach (var d in det)
                 {
                     var root = SwitchPlanner.LauncherRoots(all, d).FirstOrDefault();
-                    if (root is null || ProcessQuery.GetCommandLine(root.Pid)?.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase) == true) continue;
+                    if (root is null || SwitchPlanner.IsBackgroundOnly(ProcessQuery.GetCommandLine(root.Pid), ProcessQuery.HasVisibleWindow(root.Pid))) continue;
                     var exe = ProcessQuery.GetImagePath(root.Pid) is { } path ? ReopenTarget.PreferStub(path, System.IO.File.Exists) : null;
                     var target = new ClosedApp(d.Entry.Id, d.Entry.Name, exe, ProcessQuery.GetAumid(root.Pid));
                     if ((target.ExePath ?? target.Aumid) is not null) seen[d.Entry.Id] = target;
                 }
-                return (det, ProcessQuery.AvailableRamBytes(), est, (offers, seen));
+                // Services a switch back left paused may be running again by now (a reboot, or started by hand).
+                var paused = snapshot.PausedServices.Where(Services.IsStopped).ToList();
+                return (det, ProcessQuery.AvailableRamBytes(), est, (offers, seen, paused));
             });
             RecordLaunchTargets(suggestions.seen);
+            SetPausedServices(suggestions.paused);
             Apply(entries, detected, avail, estimated);
             ApplyVibe(entries, detected);
             SyncSuggestions(suggestions.offers);
@@ -747,9 +805,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 var targets = Switcher.LaunchTargets(Settings);
                 failedReopen.Clear();
                 failedReopen.UnionWith(closed.Closed.Concat(targets.Values).Where(c => result.Failed.Contains(c.Name)).Select(c => c.EntryId));
+                SetPausedServices(result.StillPaused);
                 LastReturnMessage =
                     (result.Opened.Count > 0 ? "Opened " + string.Join(", ", result.Opened) + "." : "Your apps are ready.")
-                    + (result.Failed.Count > 0 ? " Couldn't open " + string.Join(", ", result.Failed) + "." : "");
+                    + (result.Failed.Count > 0 ? " Couldn't open " + string.Join(", ", result.Failed) + "." : "")
+                    + (result.StillPaused.Count > 0 ? " Windows services are still paused: restart them in Settings." : "");
                 session = null;
                 stats = store.LoadStats();
                 Mode = Mode.Coding;
@@ -847,7 +907,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 row.IsDimmed = true;
                 row.Tag = "opens after"; // a vibe app that wasn't open: it starts when you switch back
             }
-            else if (IsGaming && closedIds.Contains(e.Id))
+            else if (IsGaming && closedIds.Contains(e.Id) && !isRunning)
             {
                 row.IsDimmed = true;
                 bool wslOnly = e.Kind == EntryKind.DockerWsl && session!.Closed.All(c => c.EntryId != e.Id);
@@ -858,7 +918,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             else
             {
                 row.IsDimmed = false;
-                row.Tag = IsGaming && isRunning ? "left running" : failedReopen.Contains(e.Id) ? "couldn't reopen" : "";
+                // Closed for gaming but opened again since (Ctrl+Alt+V, the Vibe page, by hand): it isn't closed any more.
+                row.Tag = IsGaming && isRunning ? (closedIds.Contains(e.Id) ? "open again" : "left running")
+                    : failedReopen.Contains(e.Id) ? "couldn't reopen" : "";
             }
             all.Add(row);
         }

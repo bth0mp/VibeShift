@@ -13,6 +13,8 @@
     <x:Static x:Key="AccentBrush" Member="SystemColors.HighlightBrush" />
     <x:Static x:Key="HighlightBrush" Member="SystemColors.HighlightBrush" />
     <x:Static x:Key="OnAccentBrush" Member="SystemColors.HighlightTextBrush" />
+    <!-- the primary button's glow: the window's own colour, so there is none -->
+    <x:Static x:Key="GlowColor" Member="SystemColors.WindowColor" />
     <x:Static x:Key="ToggleOffBrush" Member="SystemColors.WindowTextBrush" />
     <x:Static x:Key="CodingDotBrush" Member="SystemColors.HighlightBrush" />
     <x:Static x:Key="RunningTextBrush" Member="SystemColors.WindowTextBrush" />

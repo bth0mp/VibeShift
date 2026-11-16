@@ -47,7 +47,27 @@ public sealed class JsonStore(string dir)
 
     public void SaveSession(SessionState s) => Save(SessionPath, s);
 
-    public void ClearSession() => File.Delete(SessionPath);
+    public void ClearSession() => Retry(() => File.Delete(SessionPath));
+
+    // Files that exist but couldn't be read (locked by antivirus, a backup or a sync tool), so defaults were used.
+    private readonly HashSet<string> unread = [];
+
+    /// <summary>Antivirus and backup tools hold a file for a moment: try again a few times before giving up.</summary>
+    private static void Retry(Action io)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                io();
+                return;
+            }
+            catch (Exception e) when ((e is IOException or UnauthorizedAccessException) && attempt < 5)
+            {
+                Thread.Sleep(200);
+            }
+        }
+    }
 
     private string StatsPath => Path.Combine(dir, "stats.json");
 
@@ -68,7 +88,7 @@ public sealed class JsonStore(string dir)
         Save(StatsPath, all);
     }
 
-    private static T? Load<T>(string path) where T : class
+    private T? Load<T>(string path) where T : class
     {
         if (!File.Exists(path)) return null;
         for (int attempt = 1; ; attempt++)
@@ -100,6 +120,7 @@ public sealed class JsonStore(string dir)
                     continue;
                 }
                 Log.Write($"Couldn't read {Path.GetFileName(path)}: {e.Message}");
+                lock (unread) unread.Add(path); // the next save would replace it with those defaults: see Save
                 return null;
             }
         }
@@ -114,6 +135,27 @@ public sealed class JsonStore(string dir)
             JsonSerializer.Serialize(file, value, Options);
             file.Flush(flushToDisk: true); // a power cut mid-game must not leave an empty session.json
         }
-        File.Move(tmp, path, overwrite: true);
+        bool keep;
+        lock (unread) keep = unread.Remove(path);
+        if (keep) KeepUnread(path);
+        Retry(() => File.Move(tmp, path, overwrite: true));
+    }
+
+    /// <summary>
+    /// This file was never read (it was locked), so what is about to replace it is defaults, not the user's choices.
+    /// Keep the original as *.unread so nothing is lost for good.
+    /// </summary>
+    private static void KeepUnread(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            File.Copy(path, path + ".unread", overwrite: true);
+            Log.Write($"{Path.GetFileName(path)} couldn't be read earlier and is being replaced; the original is kept as .unread");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Write($"Couldn't keep a copy of the unread {Path.GetFileName(path)}: {e.Message}");
+        }
     }
 }

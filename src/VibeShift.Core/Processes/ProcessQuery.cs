@@ -92,6 +92,16 @@ public static class ProcessQuery
         }
     }
 
+    /// <summary>
+    /// When this sign-in began: the oldest process in the logon session (its csrss/winlogon, created with it). Unlike
+    /// the PC's uptime, this also moves on after a shutdown with Fast Startup, which keeps the kernel's clock running.
+    /// </summary>
+    public static DateTime? SignInTimeUtc(IReadOnlyList<ProcInfo> all, int sessionId)
+    {
+        var times = all.Where(p => p.SessionId == sessionId && p.CreateTime > 0).Select(p => p.CreateTime).ToList();
+        return times.Count == 0 ? null : DateTime.FromFileTimeUtc(times.Min());
+    }
+
     public static long AvailableRamBytes() => (long)MemoryStatus().ullAvailPhys;
 
     public static long TotalRamBytes() => (long)MemoryStatus().ullTotalPhys;

@@ -7,7 +7,14 @@ using VibeShift.Core.State;
 namespace VibeShift.Core.Switching;
 
 /// <summary>What switching back opened, and what it couldn't (by app name).</summary>
-public sealed record ReopenResult(IReadOnlyList<string> Opened, IReadOnlyList<string> Failed);
+public sealed record ReopenResult(IReadOnlyList<string> Opened, IReadOnlyList<string> Failed)
+{
+    /// <summary>
+    /// Windows services Extra boost paused that are still stopped: the admin prompt was cancelled, or timed out with
+    /// nobody at the PC. The caller keeps them (Settings.PausedServices) so the next switch back tries again.
+    /// </summary>
+    public IReadOnlyList<string> StillPaused { get; init; } = [];
+}
 
 /// <summary>
 /// Carries out SwitchPlanner's decisions. Every step and every process is attempted on its own:
@@ -116,7 +123,7 @@ public sealed class Switcher(JsonStore store)
             foreach (var root in target.ReopenRoots)
             {
                 // A browser only running in the background (Edge startup boost) had no window to bring back.
-                if (ProcessQuery.GetCommandLine(root.Pid)?.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase) == true) continue;
+                if (SwitchPlanner.IsBackgroundOnly(ProcessQuery.GetCommandLine(root.Pid), ProcessQuery.HasVisibleWindow(root.Pid))) continue;
                 var exe = ProcessQuery.GetImagePath(root.Pid) is { } path ? ReopenTarget.PreferStub(path, File.Exists) : null;
                 var app = new ClosedApp(target.Entry.Id, target.Entry.Name, exe, ProcessQuery.GetAumid(root.Pid));
                 if ((app.ExePath ?? app.Aumid) is not null && !session.Closed.Contains(app)) session.Closed.Add(app);
@@ -154,7 +161,9 @@ public sealed class Switcher(JsonStore store)
             {
                 Step("stop services", () => Services.RunElevated("stop", running));
                 session.StoppedServices.AddRange(running.Where(name => !Services.IsRunning(name)));
-                store.SaveSession(session); // record paused services at once, so they're restarted whatever happens next
+                // Record paused services at once, so they're restarted whatever happens next. A failed save must not
+                // abort the switch here: the session in memory still has them, and the apps are already closed.
+                Step("save session", () => store.SaveSession(session));
             }
         }
 
@@ -162,7 +171,7 @@ public sealed class Switcher(JsonStore store)
         Thread.Sleep(1000);
         session.AvailAfter = ProcessQuery.AvailableRamBytes();
         session.KilledBytes = targets.Where(IsGone).Sum(p => p.PrivateBytes);
-        store.SaveSession(session);
+        Step("save session", () => store.SaveSession(session));
         Log.Write($"Gaming mode ({(automatic ? "auto" : "manual")}): closed [{string.Join(", ", session.ClosedEntryIds)}], " +
                   $"services [{string.Join(", ", session.StoppedServices)}], freed {Format.Bytes(session.Freed)}");
 
@@ -188,15 +197,30 @@ public sealed class Switcher(JsonStore store)
         // After the apps: restarting services waits on a UAC prompt, and a switch back after the game closes may
         // happen with nobody at the PC. session.json still lists the services until the end, so a crash here
         // restarts them next time.
-        if (session.StoppedServices.Count > 0)
-        {
-            progress?.Report("Restarting Windows services...");
-            Step("start services", () => Services.RunElevated("start", session.StoppedServices));
-        }
+        var paused = RestartServices(session.StoppedServices.Concat(s.PausedServices), progress);
         Step("save stats", () => store.AddStat(new GamingRecord(session.StartedUtc, DateTime.UtcNow, session.Freed), DateTime.UtcNow));
         store.ClearSession();
         Log.Write($"Vibe coding mode: opened {result.Opened.Count} of {toOpen.Count}");
-        return result;
+        return result with { StillPaused = paused };
+    }
+
+    /// <summary>Settings: "Restart them now" for services an earlier switch back left paused. Returns those still stopped.</summary>
+    public Task<IReadOnlyList<string>> RestartServicesAsync(IReadOnlyCollection<string> names) =>
+        Task.Run(() => RestartServices(names, null));
+
+    /// <summary>
+    /// Starts the paused services that aren't running (one admin prompt, none when they all already run, e.g. after a
+    /// reboot). Returns the ones still stopped: the prompt was cancelled, or timed out with nobody at the PC.
+    /// </summary>
+    private static IReadOnlyList<string> RestartServices(IEnumerable<string> names, IProgress<string>? progress)
+    {
+        var stopped = names.Where(Services.IsAllowed).Distinct(StringComparer.OrdinalIgnoreCase).Where(Services.IsStopped).ToList();
+        if (stopped.Count == 0) return [];
+        progress?.Report("Restarting Windows services...");
+        Step("start services", () => Services.RunElevated("start", stopped));
+        var still = stopped.Where(Services.IsStopped).ToList();
+        if (still.Count > 0) Log.Write($"Windows services still paused: [{string.Join(", ", still)}]");
+        return still;
     }
 
     /// <summary>Starts each app and confirms the ones handed to the shell (Store apps) really appear.</summary>

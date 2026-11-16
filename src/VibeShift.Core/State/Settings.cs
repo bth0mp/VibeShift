@@ -54,6 +54,18 @@ public sealed class Settings
     public Dictionary<string, ClosedApp> LaunchTargets { get; set; } = [];
     public List<string> BoostServices { get; set; } = ["SysMain", "WSearch"];
 
+    /// <summary>
+    /// Services Extra boost paused that a switch back couldn't restart (the admin prompt was cancelled, or timed out
+    /// with nobody at the PC). Kept past the session so the next switch back, or Settings, can try again.
+    /// </summary>
+    public List<string> PausedServices { get; set; } = [];
+
+    /// <summary>
+    /// "Ask me": when a game starts, a notification offers to switch to gaming mode; nothing closes until it's
+    /// clicked. Auto mode (switch by itself) wins when both are on.
+    /// </summary>
+    public bool AskOnGameStart { get; set; }
+
     public bool IsOn(CatalogEntry e) => Toggles.TryGetValue(e.Id, out var on) ? on : e.DefaultOn;
 
     /// <summary>
@@ -65,7 +77,7 @@ public sealed class Settings
     /// <summary>Drops null list entries from a hand-edited file and upgrades older files' choices.</summary>
     internal void Normalize()
     {
-        foreach (var list in new[] { KnownApps, CustomApps, MyGames, NotGames, BoostServices, VibeApps, GameApps }) list.RemoveAll(x => x is null);
+        foreach (var list in new[] { KnownApps, CustomApps, MyGames, NotGames, BoostServices, PausedServices, VibeApps, GameApps }) list.RemoveAll(x => x is null);
         foreach (var bad in LaunchTargets.Where(kv => kv.Value is null).Select(kv => kv.Key).ToList()) LaunchTargets.Remove(bad);
         // 1.0.0 covered the Microsoft 365 Copilot app under the Copilot toggle; keep the user's choice for it.
         if (SchemaVersion < 2 && Toggles.TryGetValue("copilot", out var on) && !Toggles.ContainsKey("m365copilot"))

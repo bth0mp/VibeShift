@@ -35,4 +35,23 @@ public class ProcessQueryTests
 
     [Fact]
     public void Ram_is_sane() => Assert.InRange(ProcessQuery.AvailableRamBytes(), 1, ProcessQuery.TotalRamBytes());
+
+    [Fact] // when this sign-in began = the oldest process in the logon session; other sessions and odd entries don't count
+    public void Sign_in_time_is_the_oldest_process_in_the_session()
+    {
+        var t = new DateTime(2026, 11, 16, 8, 0, 0, DateTimeKind.Utc);
+        ProcInfo P(int pid, DateTime created, int session) => new(pid, 0, "p", 0, created.ToFileTimeUtc(), session);
+        var all = new[] { P(1, t.AddDays(-3), 0), P(2, t.AddMinutes(5), 1), P(3, t, 1), new ProcInfo(4, 0, "odd", 0, 0, 1) };
+        Assert.Equal(t, ProcessQuery.SignInTimeUtc(all, sessionId: 1));
+        Assert.Null(ProcessQuery.SignInTimeUtc(all, sessionId: 9));
+    }
+
+    [Fact] // the real thing: this test's own session began before this test process did
+    public void Sign_in_time_of_this_session_is_before_this_process()
+    {
+        using var me = Process.GetCurrentProcess();
+        var signIn = ProcessQuery.SignInTimeUtc(ProcessSnapshot.Take(), me.SessionId);
+        Assert.NotNull(signIn);
+        Assert.True(signIn <= me.StartTime.ToUniversalTime());
+    }
 }

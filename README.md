@@ -121,7 +121,7 @@ Off by default. Turn it on in Settings and VibeShift switches to gaming mode by 
 
 **Your clicks always win:**
 - Switch back to vibe coding by hand while a game is still running, and Auto mode leaves that game alone.
-- Start gaming by hand, and Auto mode won't switch you back.
+- Start gaming by hand, and whether VibeShift switches you back is up to **Switch back when my game closes** (on by default), not Auto mode.
 
 Automatic switches never open the VibeShift window or pop anything up over your game. The 10-second notice is an ordinary Windows notification, and Windows holds those back while a game runs full screen (the switch then just happens).
 

@@ -75,6 +75,49 @@ public sealed class StateTests : IDisposable
         Assert.False(File.Exists(path + ".bad"));
     }
 
+    [Fact] // 2026-11 audit: defaults loaded because the file was locked get saved within seconds (the first refresh
+           // records a launch target), which silently replaced every toggle, custom app and game the user had
+    public void A_file_that_could_not_be_read_is_kept_when_defaults_are_saved_over_it()
+    {
+        var path = Path.Combine(dir, "settings.json");
+        File.WriteAllText(path, "{\"ForceCloseSeconds\": 30}");
+        var store = Store();
+        Settings loaded;
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None)) loaded = store.LoadSettings();
+        Assert.Equal(5, loaded.ForceCloseSeconds); // defaults: the real file was locked
+
+        store.SaveSettings(loaded);
+        Assert.Contains("30", File.ReadAllText(path + ".unread"));
+        store.SaveSettings(loaded); // later saves leave the kept copy alone
+        Assert.Contains("30", File.ReadAllText(path + ".unread"));
+    }
+
+    [Fact] // a file read fine is never copied aside
+    public void A_file_that_was_read_leaves_no_unread_copy()
+    {
+        var store = Store();
+        store.SaveSettings(new Settings());
+        store.SaveSettings(store.LoadSettings());
+        Assert.False(File.Exists(Path.Combine(dir, "settings.json.unread")));
+    }
+
+    [Fact] // antivirus or a backup tool holding session.json for a moment must not leave gaming mode stuck on disk
+    public async Task Clearing_the_session_waits_out_a_brief_lock()
+    {
+        var store = Store();
+        store.SaveSession(new SessionState());
+        var path = Path.Combine(dir, "session.json");
+        var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        var release = Task.Run(async () =>
+        {
+            await Task.Delay(300);
+            locked.Dispose();
+        });
+        store.ClearSession();
+        await release;
+        Assert.False(File.Exists(path));
+    }
+
     [Fact] // M2: valid JSON with a null list would otherwise throw later on every click
     public void Null_collections_are_treated_as_corrupt()
     {

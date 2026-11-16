@@ -35,6 +35,7 @@ public partial class App : Application
     private GameWatcher? watcher;
     private bool quitting, quitAsked, ticking, started;
     private const string InstanceName = @"Local\VibeShift.Instance";
+    private string instanceName = InstanceName;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -68,7 +69,8 @@ public partial class App : Application
         string scope = Environment.GetEnvironmentVariable(JsonStore.DataDirVariable) is { Length: > 0 } d
             ? "." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(d.ToLowerInvariant())))[..12]
             : "";
-        instance = new Mutex(true, InstanceName + scope, out bool first);
+        instanceName = InstanceName + scope;
+        instance = new Mutex(true, instanceName, out bool first);
         showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\VibeShift.Show" + scope);
         if (!first)
         {
@@ -119,15 +121,27 @@ public partial class App : Application
         _ = vm.LoadPowerPlansAsync();
         vm.RestartRequested += RestartInto;
         tray.Update(vm.Mode);
+        var shownMode = vm.Mode;
         vm.Switched += (mode, automatic) =>
         {
+            // Raised after a failed switch too (to keep the tray in step), with the mode unchanged.
+            bool changed = mode != shownMode;
+            shownMode = mode;
             tray.Update(mode);
             reminder.Reset();
             loggedGames = [];
             vm.SetPlaying([]);
             if (!automatic) tracker.ManualSwitch(mode, vm.CurrentGamePids, vm.Settings.ReturnWhenGameCloses);
+            // Auto mode's start failed: leave that game alone, or the countdown comes round again every few seconds.
+            else if (!changed && mode == Mode.Coding) tracker.CancelStart(vm.CurrentGamePids);
             // Back from gaming with the window out of sight: say what opened. Nothing ever pops up while you play.
-            if (mode == Mode.Coding && !window.IsVisible) tray.Notify("Back to vibe coding", vm.LastReturnMessage);
+            if (changed && mode == Mode.Coding && !window.IsVisible) tray.Notify("Back to vibe coding", vm.LastReturnMessage);
+        };
+        // "Switch back when my game closes" flipped in the middle of a session started by hand applies now, not at
+        // the next switch. (A session Auto mode started switches back whatever the setting says.)
+        vm.SettingsChanged += () =>
+        {
+            if (vm.Mode == Mode.Gaming && !vm.SessionIsAutomatic) tracker.SetReturnWhenGameCloses(vm.Settings.ReturnWhenGameCloses);
         };
         // "Not a game" mid-session: one started by hand waits for a real game again, so the app just ruled out doesn't
         // count as "the game closed" (you may be playing something VibeShift can't see). One Auto mode started because
@@ -202,8 +216,12 @@ public partial class App : Application
         return false;
     }
 
-    /// <summary>An update was swapped in: hand the single-instance lock to the new exe and leave.</summary>
-    private void RestartInto(string exe)
+    /// <summary>
+    /// An update was swapped in: hand the single-instance lock to the new exe and leave. False if the new exe
+    /// wouldn't start (antivirus, SmartScreen): this copy then takes the lock back and stays, rather than leave no
+    /// VibeShift running and, in gaming mode, the closed apps with nothing to bring them back.
+    /// </summary>
+    private bool RestartInto(string exe)
     {
         try
         {
@@ -224,8 +242,11 @@ public partial class App : Application
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             Log.Write("Restart after update failed: " + e.Message); // the next launch runs the new version
+            instance = new Mutex(true, instanceName, out _);
+            return false;
         }
         Quit();
+        return true;
     }
 
     /// <summary>Ctrl+Alt+G switch modes, Ctrl+Alt+V open all AI apps, Ctrl+Alt+P play; off when the setting is.</summary>
@@ -304,21 +325,34 @@ public partial class App : Application
         }
     }
 
+    private int watcherBuild;
+
     private async void RebuildWatcher()
     {
+        // Every settings save lands here, and discovery takes a moment: only the latest one may set the watcher, or
+        // a slow first discovery overwrites a newer one (and with it a game just added, or a "Not a game").
+        int build = ++watcherBuild;
         try
         {
-            var games = vm!.Settings.MyGames.ToList();
+            // Straight away with the folders already known, so My games and "Not a game" count from the next poll
+            // rather than once discovery finishes.
+            if (watcher is not null) watcher = NewWatcher(vm!.GameRoots);
             var roots = await Task.Run(GameLibraries.Discover);
-            vm.GameRoots = roots;
-            using var me = Process.GetCurrentProcess();
-            watcher = new GameWatcher(roots, games, ProcessQuery.GetImagePath, ProcessQuery.HasVisibleWindow, me.SessionId,
-                vm.Settings.NotGames.ToList());
+            if (build != watcherBuild) return;
+            vm!.GameRoots = roots;
+            watcher = NewWatcher(roots);
         }
         catch (Exception ex)
         {
             Log.Write("Game watcher rebuild failed: " + ex.Message);
         }
+    }
+
+    private GameWatcher NewWatcher(IReadOnlyList<string> roots)
+    {
+        using var me = Process.GetCurrentProcess();
+        return new GameWatcher(roots, vm!.Settings.MyGames.ToList(), ProcessQuery.GetImagePath, ProcessQuery.HasVisibleWindow, me.SessionId,
+            vm.Settings.NotGames.ToList());
     }
 
     /// <summary>Sitting in the tray (e.g. while gaming), hand unused pages back to Windows.</summary>
@@ -340,12 +374,15 @@ public partial class App : Application
         Log.Write($"Auto mode: {name} started, gaming mode in 10 seconds");
         tray?.Notify("Gaming mode in 10 seconds", $"{name} started. Click here to keep your apps open.", () =>
         {
-            if (vm!.Mode == Mode.Gaming) // too late (clicked from the notification centre): show Back to vibe coding
+            // Too late (clicked from the notification centre, or as the switch began): show Back to vibe coding.
+            if (vm!.Mode == Mode.Gaming || vm.IsBusy)
             {
                 ShowWindow();
                 return;
             }
-            tracker.CancelStart(gamePids);
+            // The games running now as well as those at the countdown's start: a launcher or splash exe in the game's
+            // folder may have handed over to the real game since.
+            tracker.CancelStart(gamePids.Concat(vm.CurrentGamePids).ToList());
             Log.Write($"Auto mode: kept apps open for {name}");
             tray?.Notify("Keeping your apps open", $"Auto mode leaves {name} alone until another game starts.");
         });
@@ -390,10 +427,24 @@ public partial class App : Application
             while (!vm.CanVibeAct) await Task.Delay(200); // never quit mid-switch: half the apps closed, no session yet
             if (vm.Mode == Mode.Gaming)
             {
+                await vm.RefreshAsync(); // so the dialog names what is closed right now, not what was closed at the start
                 var dialog = new QuitDialog(vm.ReopenNames);
                 dialog.ShowDialog();
                 if (dialog.Choice == QuitChoice.Cancel) return;
-                if (dialog.Choice == QuitChoice.ReopenAndQuit) await vm.ToggleModeAsync(automatic: false);
+                // The dialog doesn't stop the app. While it was open the game may have closed and the automatic switch
+                // back run (or be running), or a hotkey switched: toggling blindly would then START gaming mode and
+                // close every app just before quitting. So wait, and only switch back if still in gaming mode.
+                while (!vm.CanVibeAct) await Task.Delay(200);
+                if (dialog.Choice == QuitChoice.ReopenAndQuit && vm.Mode == Mode.Gaming)
+                {
+                    await vm.ToggleModeAsync(automatic: false);
+                    if (vm.Mode == Mode.Gaming)
+                    {
+                        Log.Write("Quit cancelled: the switch back didn't finish");
+                        ShowWindow();
+                        return;
+                    }
+                }
                 if (vm.Mode == Mode.Gaming) Log.Write("Quit in gaming mode: apps left closed");
             }
             Log.Write("Quit");

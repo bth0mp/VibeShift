@@ -132,10 +132,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <StackPanel Orientation="Horizontal">
-                <Ellipse Width="9" Height="9" Margin="0,2,10,0" VerticalAlignment="Center" Fill="{DynamicResource CodingDotBrush}" />
-                <TextBlock Text="Vibe mode" FontSize="18" FontWeight="SemiBold" />
-            </StackPanel>
+            <TextBlock Text="Vibe" FontSize="18" FontWeight="SemiBold" />
             <TextBlock Grid.Row="1" Style="{StaticResource Hint}" FontSize="12" Margin="0,6,0,14"
                        Text="Flip an app on to open it, off to close it, right now. This doesn't switch modes." />
             <UniformGrid Grid.Row="2" Columns="2" Margin="0,0,0,16">
@@ -151,7 +148,8 @@
             <Border Grid.Row="4" Style="{StaticResource Card}" VerticalAlignment="Top">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid>
-                        <ItemsControl ItemsSource="{Binding VibeRows}" Margin="0,-1,0,0">
+                        <!-- One thing at a time: mid-switch, or while another app opens or closes, a flipped switch would only snap back -->
+                        <ItemsControl ItemsSource="{Binding VibeRows}" Margin="0,-1,0,0" IsEnabled="{Binding CanVibeAct}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,10">
@@ -413,6 +411,13 @@
                                 <Run Text="Also pauses Windows background services (" /><Run Text="{Binding BoostServicesText, Mode=OneWay}" /><Run
                                      Text=") while you game. Windows asks for admin permission when you click Start gaming and again when you switch back. Auto mode skips this, so nothing pops up over your game." />
                             </TextBlock>
+                            <!-- The admin prompt on the way back was cancelled, or timed out with nobody at the PC -->
+                            <StackPanel Margin="0,8,0,0" Visibility="{Binding HasPausedServices, Converter={StaticResource Visible}}">
+                                <TextBlock Text="{Binding PausedServicesText}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" />
+                                <Button Style="{StaticResource LinkButton}" Content="Restart them now" Command="{Binding RestartServicesCommand}"
+                                        IsEnabled="{Binding CanVibeAct}" HorizontalAlignment="Left" Margin="0,4,0,0"
+                                        ToolTip="Windows asks for admin permission once. They also start again when you restart your PC." />
+                            </StackPanel>
                         </StackPanel>
                     </DockPanel>
                 </Border>
