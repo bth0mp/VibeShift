@@ -296,7 +296,7 @@
                             <TextBlock Style="{StaticResource Label}" Text="MY GAMES" />
                         </DockPanel>
                         <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,4"
-                                   Text="Steam, Epic, GOG, EA and Xbox games are found automatically. Add anything else here." />
+                                   Text="Steam, Epic, GOG, EA, Xbox, Ubisoft Connect and Battle.net games are found automatically. Add anything else here." />
                         <ItemsControl ItemsSource="{Binding MyGames}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>

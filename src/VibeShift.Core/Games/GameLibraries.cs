@@ -115,6 +115,8 @@ public static partial class GameLibraries
         Try(() => roots.AddRange(Steam()));
         Try(() => roots.AddRange(Epic()));
         Try(() => roots.AddRange(Gog()));
+        Try(() => roots.AddRange(Ubisoft()));
+        Try(() => roots.AddRange(BattleNet()));
         Try(() =>
         {
             foreach (var d in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady))
@@ -124,7 +126,70 @@ public static partial class GameLibraries
                 roots.Add(Path.Combine(d.Name, "XboxGames"));
             }
         });
-        return roots.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        string[] system =
+        [
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ];
+        return roots.Select(NormalizeDir).Where(r => !IsTooBroad(r, system) && Directory.Exists(r))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>Launchers record folders with forward slashes, quotes and trailing separators; roots are matched on backslashes.</summary>
+    public static string NormalizeDir(string dir) => dir.Trim().Trim('"').Replace('/', '\\').TrimEnd('\\');
+
+    /// <summary>
+    /// A "library" that is a whole drive, Program Files, Windows or the user's profile (a damaged launcher record)
+    /// would make every windowed app in it a game, and Auto mode would close the user's apps for all of them.
+    /// </summary>
+    public static bool IsTooBroad(string root, IReadOnlyList<string> systemDirs)
+    {
+        root = NormalizeDir(root);
+        return root.Length == 0
+               || string.Equals(Path.GetPathRoot(root + @"\")?.TrimEnd('\\'), root, StringComparison.OrdinalIgnoreCase)
+               || systemDirs.Any(d => d.Length > 0 && string.Equals(NormalizeDir(d), root, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// A Battle.net game's folder from its Windows uninstall entry (they all uninstall through Blizzard Uninstaller.exe),
+    /// or null for anything else, the Battle.net app itself included.
+    /// </summary>
+    public static string? ParseBlizzardInstall(string? uninstallString, string? installLocation)
+    {
+        if (uninstallString is null || string.IsNullOrWhiteSpace(installLocation)) return null;
+        if (!uninstallString.Contains("Blizzard Uninstaller.exe", StringComparison.OrdinalIgnoreCase)) return null;
+        if (uninstallString.Contains("--uid=battle.net", StringComparison.OrdinalIgnoreCase)) return null;
+        return NormalizeDir(installLocation);
+    }
+
+    private static IEnumerable<string> Ubisoft()
+    {
+        using var installs = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs");
+        if (installs is null) return [];
+        var paths = new List<string>();
+        foreach (var id in installs.GetSubKeyNames())
+        {
+            using var game = installs.OpenSubKey(id);
+            if (game?.GetValue("InstallDir") is string dir) paths.Add(dir);
+        }
+        return paths;
+    }
+
+    private static IEnumerable<string> BattleNet()
+    {
+        var paths = new List<string>();
+        foreach (var view in new[] { @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall", @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" })
+        {
+            using var uninstall = Registry.LocalMachine.OpenSubKey(view);
+            if (uninstall is null) continue;
+            foreach (var name in uninstall.GetSubKeyNames())
+            {
+                using var entry = uninstall.OpenSubKey(name);
+                if (ParseBlizzardInstall(entry?.GetValue("UninstallString") as string, entry?.GetValue("InstallLocation") as string) is { } dir)
+                    paths.Add(dir);
+            }
+        }
+        return paths;
     }
 
     private static IEnumerable<string> Steam() => SteamLibraries().Select(l => Path.Combine(l, "steamapps", "common"));

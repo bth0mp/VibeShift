@@ -54,6 +54,38 @@ public class GameTests
             GameLibraries.ParseEpicInstallLocation("{\"InstallLocation\": \"D:\\\\Epic Games\\\\Fortnite\", \"AppCategories\": [\"games\", \"applications\"]}"));
     }
 
+    [Theory] // Battle.net games are listed under Windows' uninstall entries; the Battle.net app itself is not a game
+    [InlineData("\"C:\\ProgramData\\Battle.net\\Agent\\Blizzard Uninstaller.exe\" --lang=enUS --uid=fenris --displayname=\"Diablo IV\"", @"D:\games\Diablo IV", @"D:\games\Diablo IV")]
+    [InlineData("\"C:\\ProgramData\\Battle.net\\Agent\\Blizzard Uninstaller.exe\" --lang=enUS --uid=prometheus --displayname=\"Overwatch\"", @"D:\games\Overwatch\", @"D:\games\Overwatch")]
+    [InlineData("\"C:\\ProgramData\\Battle.net\\Agent\\Blizzard Uninstaller.exe\" --lang=enUS --uid=battle.net --displayname=\"Battle.net\"", @"D:\Battlenet\Battle.net", null)]
+    [InlineData("MsiExec.exe /X{1234}", @"C:\Program Files\Something", null)]
+    [InlineData("\"C:\\ProgramData\\Battle.net\\Agent\\Blizzard Uninstaller.exe\" --uid=fenris", "", null)]
+    [InlineData(null, @"D:\games\Diablo IV", null)]
+    public void Blizzard_game_folder_comes_from_its_uninstall_entry(string? uninstall, string? location, string? expected) =>
+        Assert.Equal(expected, GameLibraries.ParseBlizzardInstall(uninstall, location));
+
+    [Fact] // Ubisoft Connect writes "C:/.../games/XDefiant/"; roots are matched on backslashes with no trailing one
+    public void Launcher_folders_are_normalized() =>
+        Assert.Equal(@"C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\games\XDefiant",
+            GameLibraries.NormalizeDir("C:/Program Files (x86)/Ubisoft/Ubisoft Game Launcher/games/XDefiant/"));
+
+    [Theory] // a launcher record pointing at a whole drive or Program Files would make every windowed app there "a game"
+    [InlineData(@"D:\", true)]
+    [InlineData(@"D:", true)]
+    [InlineData(@"C:\Program Files", true)]
+    [InlineData(@"C:\Program Files (x86)\", true)]
+    [InlineData(@"C:\Windows", true)]
+    [InlineData("", true)]
+    [InlineData(@"D:\games\Overwatch", false)]
+    [InlineData(@"C:\Program Files (x86)\Steam\steamapps\common", false)]
+    public void Folders_too_broad_to_be_a_game_library_are_refused(string root, bool tooBroad) =>
+        Assert.Equal(tooBroad, GameLibraries.IsTooBroad(root, [@"C:\Program Files", @"C:\Program Files (x86)", @"C:\Windows"]));
+
+    [Theory] // a store's own window under a library root is not a game
+    [InlineData(@"D:\games\Battle.net\Battle.net.exe")]
+    [InlineData(@"D:\games\Ubisoft\UbisoftConnect.exe")]
+    public void Game_store_apps_are_not_games(string path) => Assert.False(GameRules.IsCandidate(path, [@"D:\games"]));
+
     [Theory] // review I3: creative tools sold on Steam aren't games
     [InlineData(@"D:\SteamLibrary\steamapps\common\Blender\blender.exe")]
     [InlineData(@"D:\SteamLibrary\steamapps\common\Godot Engine\godot.exe")]

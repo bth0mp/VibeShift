@@ -44,12 +44,12 @@ public static class GameRules
     {
         if (!roots.Any(r => imagePath.StartsWith(r.TrimEnd('\\') + @"\", StringComparison.OrdinalIgnoreCase))) return false;
         var file = Path.GetFileNameWithoutExtension(imagePath);
-        if (ExcludedFiles.Any(rx => rx.IsMatch(file))) return false;
+        if (Launchers.Contains(file) || ExcludedFiles.Any(rx => rx.IsMatch(file))) return false;
         var folders = Path.GetDirectoryName(imagePath)?.Split('\\') ?? [];
         return !folders.Any(f => ExcludedFolders.Any(rx => rx.IsMatch(f)));
     }
 
-    // Library folders holding many games (Steam's common, EA, Xbox); Epic and GOG roots are each one game's own folder.
+    // Library folders holding many games (Steam's common, EA, Xbox); Epic, GOG, Ubisoft and Battle.net roots are each one game's own folder.
     private static readonly HashSet<string> SharedRoots = new(StringComparer.OrdinalIgnoreCase) { "common", "EA Games", "XboxGames" };
 
     /// <summary>A game's name for "Playing ...": its install folder (Deadlock, Hood Warfare 2), else the exe's name.</summary>

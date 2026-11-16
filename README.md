@@ -114,7 +114,7 @@ Closing the window keeps VibeShift running as a small icon by the clock, with a 
 Off by default. Turn it on in Settings and VibeShift switches to gaming mode by itself when a game starts. First a notification says **Gaming mode in 10 seconds**: click it to keep your apps open (save that file first, or it wasn't a game), and Auto mode leaves that game alone until another one starts. It switches back 10 seconds after the game closes, so a launcher restarting the game doesn't bounce your apps.
 
 **What counts as a game:**
-- Any program with a window running from a Steam, Epic, GOG, EA app or Xbox app games folder. VibeShift finds those folders automatically.
+- Any program with a window running from a Steam, Epic, GOG, EA app, Xbox app, Ubisoft Connect or Battle.net games folder. VibeShift finds those folders automatically.
 - Anything you add under **My games**.
 - Launchers, crash reporters, anti-cheat services, installers and non-game Steam apps such as Wallpaper Engine are ignored.
 - While you're in gaming mode, Home shows what VibeShift sees you playing (**Playing Deadlock**). If that's not a game (an idle game or desktop pet you leave running all day), click **Not a game** and VibeShift ignores it from then on. They're listed under **Not games** in Settings, where you can undo it.
