@@ -37,6 +37,7 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 - **Switch back when my game closes** (on by default) does this for you about 10 seconds after your game exits, even if you clicked Start gaming yourself. A Windows notification tells you what opened.
 - Microsoft Store apps (like Claude and ChatGPT) reopen through Windows, the same way the Start menu opens them.
 - If VibeShift crashes or your PC restarts in the middle of a game, it opens in gaming mode next time, so **Back to vibe coding** still knows what to reopen.
+- Shut down or signed out while in gaming mode? With **Switch back when my game closes** on, VibeShift switches back by itself a few seconds after it next starts, since that game is certainly closed. (It leaves this to you if Extra boost paused services, because restarting those needs an admin prompt.)
 - Still in gaming mode 2 hours after your last game (the setting is off, say, or you played something VibeShift doesn't recognise)? A Windows notification reminds you, once. It waits until nothing is running full screen.
 
 **Play button**
@@ -58,6 +59,16 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 
 If another app already uses one of these, Settings says so.
 
+**Command line** (for a Stream Deck button, an AutoHotkey script, a scheduled task or a game's launch options)
+
+| Command | Does |
+|---|---|
+| `VibeShift.exe --gaming` | Switches to gaming mode (does nothing if you're already in it) |
+| `VibeShift.exe --coding` | Switches back to vibe coding |
+| `VibeShift.exe --toggle` | Switches to the other mode |
+
+If VibeShift is already running, the command is passed to it and returns straight away. If it isn't, VibeShift starts in the tray and then switches.
+
 **Vibe page (quick on/off)**
 
 - The ⚡ page lists your AI apps (Claude, ChatGPT, Cursor, Windsurf, Copilot, Ollama, LM Studio, plus anything you add) with a live switch each: on opens the app right now, off closes it right now. **Open all** and **Close all** do the whole list at once.
@@ -78,7 +89,7 @@ If another app already uses one of these, Settings says so.
 - **Settings → About → Check for updates** asks GitHub for the latest release. If there's a newer one, one click downloads it, checks it against the SHA-256 GitHub publishes for it, swaps it in and restarts VibeShift. Your settings and any gaming session carry over.
 - Turn on **Check for updates automatically** to have VibeShift check once a day. It's off until you turn it on, and VibeShift never updates without your click.
 
-Closing the window keeps VibeShift running as a small icon by the clock, with a green dot in vibe coding mode and a purple one while gaming. Right-click it to switch modes or quit. Quitting in gaming mode asks first, since the apps it closed would stay closed: **Reopen and quit** brings them back. Windows 11 tucks new icons under the **^** arrow; drag it onto the taskbar to keep it in sight, and turn on **Start with Windows** in Settings so it's always there.
+Closing the window keeps VibeShift running as a small icon by the clock, with a green dot in vibe coding mode and a purple one while gaming. Hover over it while gaming to see what you're playing and how much RAM was freed. Right-click it to switch modes, change **When a game starts** (handy for pausing Auto mode for an evening) or quit. Quitting in gaming mode asks first, since the apps it closed would stay closed: **Reopen and quit** brings them back. Windows 11 tucks new icons under the **^** arrow; drag it onto the taskbar to keep it in sight, and turn on **Start with Windows** in Settings so it's always there.
 
 ## What it can close
 
@@ -111,7 +122,10 @@ Closing the window keeps VibeShift running as a small icon by the clock, with a 
 
 ## Auto mode
 
-Off by default. Turn it on in Settings and VibeShift switches to gaming mode by itself when a game starts. First a notification says **Gaming mode in 10 seconds**: click it to keep your apps open (save that file first, or it wasn't a game), and Auto mode leaves that game alone until another one starts. It switches back 10 seconds after the game closes, so a launcher restarting the game doesn't bounce your apps.
+**Settings → When a game starts** has three choices. It starts on **Off**: VibeShift only switches when you tell it to.
+
+- **Automatic** (Auto mode): VibeShift switches to gaming mode by itself when a game starts. First a notification says **Gaming mode in 10 seconds**: click it to keep your apps open (save that file first, or it wasn't a game), and Auto mode leaves that game alone until another one starts. It switches back 10 seconds after the game closes, so a launcher restarting the game doesn't bounce your apps.
+- **Ask me**: when a game starts, a notification says so. Click it and VibeShift switches to gaming mode; ignore it and nothing closes. Good if you want the reminder but not apps closing by themselves.
 
 **What counts as a game:**
 - Any program with a window running from a Steam, Epic, GOG, EA app, Xbox app, Ubisoft Connect or Battle.net games folder. VibeShift finds those folders automatically.
@@ -123,11 +137,13 @@ Off by default. Turn it on in Settings and VibeShift switches to gaming mode by 
 - Switch back to vibe coding by hand while a game is still running, and Auto mode leaves that game alone.
 - Start gaming by hand, and whether VibeShift switches you back is up to **Switch back when my game closes** (on by default), not Auto mode.
 
-Automatic switches never open the VibeShift window or pop anything up over your game. The 10-second notice is an ordinary Windows notification, and Windows holds those back while a game runs full screen (the switch then just happens).
+Automatic switches never open the VibeShift window or pop anything up over your game. The 10-second notice and the Ask me question are ordinary Windows notifications, and Windows holds those back while a game runs full screen (Auto mode's switch then just happens; Ask me's question waits in the notification centre).
 
 ## Extra boost
 
 Off by default. When it's on, **Start gaming** also pauses two Windows background services: SysMain (memory prefetching) and Windows Search indexing. **Back to vibe coding** restarts them. Pausing and restarting services needs admin permission, so Windows asks when you click Start gaming and again when you switch back (after your apps have reopened, so they never wait on the prompt). Auto mode skips this step so nothing pops up mid-game.
+
+If that second prompt is cancelled, or times out because you weren't at the PC when VibeShift switched back, the services stay paused. VibeShift remembers them: Settings shows which are still paused with a **Restart them now** link, and the next switch back asks again. Restarting your PC starts them too.
 
 ## Privacy and permissions
 
@@ -137,7 +153,7 @@ Off by default. When it's on, **Start gaming** also pauses two Windows backgroun
   - `settings.json`: your choices.
   - `session.json`: what to reopen. It only exists while you're in gaming mode.
   - `stats.json`: when your last 90 days of gaming sessions started and ended, and the RAM each one freed.
-  - `vibeshift.log`: a short log of switches and the games VibeShift saw start and close, handy if you open an issue.
+  - `vibeshift.log`: a short log of switches and the games VibeShift saw start and close, handy if you open an issue. **Settings → About → Open log folder** takes you there.
 
 ## Build from source
 

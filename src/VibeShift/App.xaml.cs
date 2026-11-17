@@ -71,17 +71,30 @@ public partial class App : Application
             : "";
         instanceName = InstanceName + scope;
         instance = new Mutex(true, instanceName, out bool first);
-        showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\VibeShift.Show" + scope);
+        // A second launch signals the first and leaves: plain, it shows the window; with --gaming, --coding or --toggle
+        // it switches modes, so a Stream Deck button, a script or a game's launch options can drive VibeShift.
+        string? command = e.Args.FirstOrDefault(a => Commands.Contains(a));
+        var signals = new[] { "Show" }.Concat(Commands.Select(c => "Cmd" + c)).Select(name =>
+            new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\VibeShift.{name.Replace("--", ".")}{scope}")).ToArray();
+        showSignal = signals[0];
         if (!first)
         {
-            showSignal.Set();
+            signals[command is null ? 0 : 1 + Array.IndexOf(Commands, command)].Set();
             Shutdown();
             return;
         }
         new Thread(() =>
         {
-            while (showSignal.WaitOne()) Dispatcher.BeginInvoke(ShowWindow);
-        }) { IsBackground = true, Name = "show-signal" }.Start();
+            while (true)
+            {
+                int i = WaitHandle.WaitAny(signals);
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (i == 0) ShowWindow();
+                    else _ = RunCommandAsync(Commands[i - 1]);
+                });
+            }
+        }) { IsBackground = true, Name = "signals" }.Start();
 
         var store = JsonStore.Default;
         Log.Init(store.Dir);
@@ -100,8 +113,18 @@ public partial class App : Application
 
         // A leftover session.json means we crashed or rebooted mid-game: the view model opens in Gaming mode.
         vm = new MainViewModel(store, settings);
-        // Mid-game crash or reboot: keep switching back by itself once the game is gone.
-        if (vm.HasSession) tracker.Resume(vm.SessionIsAutomatic, settings.ReturnWhenGameCloses, DateTime.UtcNow);
+        // Mid-game crash, update or reboot: keep switching back by itself once the game is gone.
+        if (vm.HasSession)
+        {
+            // Shut down or signed out in gaming mode: the game is gone whatever it was, so this counts as it closing.
+            // Not with Extra boost's services paused: restarting them takes an admin prompt, which shouldn't greet a
+            // sign-in nobody asked it at.
+            using var me = Process.GetCurrentProcess();
+            bool signedOut = !vm.SessionPausedServices
+                             && vm.SessionStartedUtc < ProcessQuery.SignInTimeUtc(ProcessSnapshot.Take(), me.SessionId);
+            tracker.Resume(vm.SessionIsAutomatic, settings.ReturnWhenGameCloses, DateTime.UtcNow, signedOut);
+            Log.Write(signedOut ? "Started in gaming mode, from before the last sign-out" : "Started in gaming mode");
+        }
         window = new MainWindow(vm);
         window.Closing += (_, ev) =>
         {
@@ -112,7 +135,12 @@ public partial class App : Application
         };
         tray = new Tray(ShowWindow, () => vm.ToggleModeAsync(automatic: false), QuitFromTray,
             vm.OpenAllAsync, vm.CloseAllAsync, vm.VibeAppsNow, vm.SetVibeAppAsync,
-            () => vm.CanPlay ? "Play " + vm.PlayTarget!.Name : null, vm.PlayAsync);
+            () => vm.CanPlay ? "Play " + vm.PlayTarget!.Name : null, vm.PlayAsync,
+            () => vm.GameStartChoice, choice => vm.GameStartChoice = choice);
+        vm.PropertyChanged += (_, ev) =>
+        {
+            if (ev.PropertyName is nameof(MainViewModel.PlayingText)) tray?.Update(vm.Mode, vm.TrayDetail);
+        };
         hotkeys = new Hotkeys(window);
         ApplyHotkeys();
         vm.SettingsChanged += ApplyHotkeys;
@@ -120,14 +148,14 @@ public partial class App : Application
         _ = vm.LoadGamesAsync();
         _ = vm.LoadPowerPlansAsync();
         vm.RestartRequested += RestartInto;
-        tray.Update(vm.Mode);
+        tray.Update(vm.Mode, vm.TrayDetail);
         var shownMode = vm.Mode;
         vm.Switched += (mode, automatic) =>
         {
             // Raised after a failed switch too (to keep the tray in step), with the mode unchanged.
             bool changed = mode != shownMode;
             shownMode = mode;
-            tray.Update(mode);
+            tray.Update(mode, vm.TrayDetail);
             reminder.Reset();
             loggedGames = [];
             vm.SetPlaying([]);
@@ -154,9 +182,10 @@ public partial class App : Application
         vm.FindGames = () => watcher is { } w ? w.Scan(ProcessSnapshot.Take()) : [];
         RebuildWatcher();
 
-        if (!e.Args.Contains("--tray")) window.Show();
+        if (!e.Args.Contains("--tray") && command is null) window.Show();
         else Dispatcher.BeginInvoke(TrimMemory, DispatcherPriority.ApplicationIdle);
         _ = vm.RefreshAsync();
+        if (command is not null) _ = RunCommandAsync(command);
 
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += async (_, _) => await TickAsync();
@@ -277,7 +306,40 @@ public partial class App : Application
         base.OnExit(e);
     }
 
-    /// <summary>Refreshes the visible window and runs Auto mode. Does nothing while hidden with Auto mode off.</summary>
+    private static readonly string[] Commands = ["--gaming", "--coding", "--toggle"];
+
+    /// <summary>
+    /// --gaming / --coding / --toggle, from this copy's own command line or signalled by a second launch. Waits for the
+    /// game watcher first (a fresh start hasn't found the game libraries yet), so the switch still protects a running game.
+    /// </summary>
+    private async Task RunCommandAsync(string command)
+    {
+        if (vm is null) return;
+        try
+        {
+            for (int i = 0; i < 50 && watcher is null; i++) await Task.Delay(200);
+            Log.Write("Command line: " + command);
+            await vm.SwitchToAsync(command switch { "--gaming" => Mode.Gaming, "--coding" => Mode.Coding, _ => null });
+        }
+        catch (Exception e)
+        {
+            Log.Write($"Command line {command} failed: {e.Message}");
+        }
+    }
+
+    /// <summary>"Ask me": a game started. One click on the notification switches to gaming mode; ignoring it closes nothing.</summary>
+    private void AskToStart(string? gamePath)
+    {
+        string name = gamePath is null ? "A game" : GameRules.DisplayName(gamePath, vm!.GameRoots);
+        Log.Write($"Ask me: {name} started");
+        tray?.Notify($"{name} started", "Click here to switch to gaming mode and close your apps.", () =>
+        {
+            if (vm!.Mode == Mode.Coding) _ = vm.SwitchToAsync(Mode.Gaming);
+            else ShowWindow();
+        });
+    }
+
+    /// <summary>Refreshes the visible window and runs Auto mode and Ask me. Does nothing while hidden with both off.</summary>
     private async Task TickAsync()
     {
         if (ticking || vm is null || window is null || vm.IsBusy) return;
@@ -289,22 +351,27 @@ public partial class App : Application
             // "Switch back when my game closes") and for gaming mode outliving it.
             var s = vm.Settings;
             bool gaming = vm.Mode == Mode.Gaming;
-            if ((gaming || s.AutoMode) && watcher is { } w)
+            bool ask = s.AskOnGameStart && !s.AutoMode;
+            if ((gaming || s.AutoMode || ask) && watcher is { } w)
             {
-                var found = await Task.Run(() =>
+                var (found, alive) = await Task.Run(() =>
                 {
                     var snapshot = ProcessSnapshot.Take();
                     var pids = w.Scan(snapshot);
-                    return snapshot.Where(p => pids.Contains(p.Pid)).Select(p => (p.Pid, p.Name, Path: ProcessQuery.GetImagePath(p.Pid))).ToList();
+                    return (snapshot.Where(p => pids.Contains(p.Pid)).Select(p => (p.Pid, p.Name, Path: ProcessQuery.GetImagePath(p.Pid))).ToList(),
+                        snapshot.Select(p => p.Pid).ToHashSet());
                 });
                 var games = found.ToDictionary(g => g.Pid, g => g.Name);
                 vm.CurrentGamePids = games.Keys.ToList();
                 LogGames(games);
                 vm.SetPlaying(gaming ? found.Where(g => g.Path is not null).Select(g => (GameRules.DisplayName(g.Path!, vm.GameRoots), g.Path!)).ToList() : []);
                 // Automatic switches never show or activate the window; only the tray tooltip changes.
-                var action = tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode, canSwitch: vm.CanVibeAct);
+                var action = tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode || ask, canSwitch: vm.CanVibeAct,
+                    alive: alive, askOnly: ask);
                 if (action == AutoAction.StartSoon)
                     AnnounceAutoStart(found.FirstOrDefault(g => g.Path is not null).Path, vm.CurrentGamePids);
+                else if (action == AutoAction.Ask)
+                    AskToStart(found.FirstOrDefault(g => g.Path is not null).Path);
                 else if (action != AutoAction.None)
                     await vm.ToggleModeAsync(automatic: true);
                 else if (gaming && vm.SessionStartedUtc is { } since

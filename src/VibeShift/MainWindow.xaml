@@ -270,14 +270,12 @@
                 <Border Style="{StaticResource Tile}">
                     <StackPanel>
                         <DockPanel>
-                            <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding AutoMode}" VerticalAlignment="Center"
-                                      AutomationProperties.Name="Auto mode" />
-                            <StackPanel Margin="0,0,12,0">
-                                <TextBlock Text="Auto mode" />
-                                <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
-                                           Text="Switch to gaming 10 seconds after a game starts (click the notification to keep your apps open), and back 10 seconds after it closes." />
-                            </StackPanel>
+                            <ListBox DockPanel.Dock="Right" Style="{StaticResource Segmented}" ItemsSource="{Binding GameStartOptions}"
+                                     DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding GameStartChoice}"
+                                     AutomationProperties.Name="When a game starts" />
+                            <TextBlock Text="When a game starts" VerticalAlignment="Center" />
                         </DockPanel>
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0" Text="{Binding GameStartHint}" />
                         <Rectangle Height="1" Fill="{DynamicResource BorderBrush}" Margin="0,11" />
                         <DockPanel>
                             <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding ReturnWhenGameCloses}" VerticalAlignment="Center"
@@ -413,7 +411,7 @@
                             </TextBlock>
                             <!-- The admin prompt on the way back was cancelled, or timed out with nobody at the PC -->
                             <StackPanel Margin="0,8,0,0" Visibility="{Binding HasPausedServices, Converter={StaticResource Visible}}">
-                                <TextBlock Text="{Binding PausedServicesText}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding PausedServicesText}" Foreground="{DynamicResource HighlightBrush}" TextWrapping="Wrap" FontSize="11.5" />
                                 <Button Style="{StaticResource LinkButton}" Content="Restart them now" Command="{Binding RestartServicesCommand}"
                                         IsEnabled="{Binding CanVibeAct}" HorizontalAlignment="Left" Margin="0,4,0,0"
                                         ToolTip="Windows asks for admin permission once. They also start again when you restart your PC." />
@@ -430,10 +428,15 @@
                                     VerticalAlignment="Center" IsEnabled="{Binding CanCheckUpdates}" />
                             <TextBlock Text="{Binding Version}" />
                         </DockPanel>
-                        <TextBlock Margin="0,3,0,0" FontSize="12">
-                            <Hyperlink NavigateUri="https://github.com/bth0mp/VibeShift" RequestNavigate="Link_RequestNavigate"
-                                       Foreground="{DynamicResource HighlightBrush}">github.com/bth0mp/VibeShift</Hyperlink>
-                        </TextBlock>
+                        <DockPanel Margin="0,3,0,0">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Open log folder" Click="OpenLogFolder_Click"
+                                    VerticalAlignment="Center"
+                                    ToolTip="vibeshift.log lists every switch and the games VibeShift saw: attach it to a bug report" />
+                            <TextBlock FontSize="12">
+                                <Hyperlink NavigateUri="https://github.com/bth0mp/VibeShift" RequestNavigate="Link_RequestNavigate"
+                                           Foreground="{DynamicResource HighlightBrush}">github.com/bth0mp/VibeShift</Hyperlink>
+                            </TextBlock>
+                        </DockPanel>
                         <DockPanel Margin="0,8,0,0" Visibility="{Binding HasUpdateStatus, Converter={StaticResource Visible}}">
                             <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="{Binding UpdateText}" Command="{Binding UpdateCommand}"
                                     VerticalAlignment="Center" IsEnabled="{Binding CanCheckUpdates}" Visibility="{Binding HasUpdate, Converter={StaticResource Visible}}" />

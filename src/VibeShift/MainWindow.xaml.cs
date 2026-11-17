@@ -61,6 +61,9 @@ public partial class MainWindow : Window
         if (((FrameworkElement)sender).DataContext is string path) vm.RemoveNotGame(path);
     }
 
+    private void OpenLogFolder_Click(object sender, RoutedEventArgs e) =>
+        Process.Start(new ProcessStartInfo(VibeShift.Core.Switching.ReopenTarget.Explorer, $"\"{vm.DataFolder}\"") { UseShellExecute = false })?.Dispose();
+
     private void Link_RequestNavigate(object sender, RequestNavigateEventArgs e)
     {
         Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true })?.Dispose();

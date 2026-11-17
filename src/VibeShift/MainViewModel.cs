@@ -528,11 +528,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool AutoMode
+    /// <summary>What happens when a game starts: nothing, a notification to click, or the switch itself (Auto mode).</summary>
+    public enum GameStart { Off, Ask, Auto }
+
+    public sealed record GameStartOption(GameStart Value, string Label);
+
+    public IReadOnlyList<GameStartOption> GameStartOptions { get; } =
+        [new(GameStart.Off, "Off"), new(GameStart.Ask, "Ask me"), new(GameStart.Auto, "Automatic")];
+
+    public GameStart GameStartChoice
     {
-        get => Settings.AutoMode;
-        set { Settings.AutoMode = value; SaveSettings(); Raise(); }
+        get => Settings.AutoMode ? GameStart.Auto : Settings.AskOnGameStart ? GameStart.Ask : GameStart.Off;
+        set
+        {
+            if (value == GameStartChoice) return;
+            Settings.AutoMode = value == GameStart.Auto;
+            Settings.AskOnGameStart = value == GameStart.Ask;
+            SaveSettings();
+            Raise();
+            Raise(nameof(GameStartHint));
+        }
     }
+
+    public string GameStartHint => GameStartChoice switch
+    {
+        GameStart.Auto => "Auto mode: switch to gaming 10 seconds after a game starts (click the notification to keep your apps open), and back 10 seconds after it closes.",
+        GameStart.Ask => "When a game starts, a notification asks. Click it and VibeShift switches to gaming mode; ignore it and nothing closes.",
+        _ => "VibeShift only switches when you click Start gaming or Play, or use a shortcut.",
+    };
 
     public bool StartWithWindows
     {
@@ -604,6 +627,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
         session?.Closed.Where(c => !(rows.TryGetValue(c.EntryId, out var row) && row.IsRunning)).Select(c => c.Name).Distinct().ToList() ?? [];
 
     public DateTime? SessionStartedUtc => session?.StartedUtc;
+
+    /// <summary>This session paused Windows services (Extra boost): switching back will ask for admin permission.</summary>
+    public bool SessionPausedServices => session?.StoppedServices.Count > 0;
+
+    /// <summary>For the tray tooltip while gaming: "Playing Deadlock · freed 2.4 GB".</summary>
+    public string TrayDetail => session is null ? ""
+        : string.Join(" \u00b7 ", new[] { PlayingText, session.Freed > 0 ? "freed " + Format.Bytes(session.Freed) : "" }.Where(t => t.Length > 0));
+
+    /// <summary>Where settings, the session and vibeshift.log live.</summary>
+    public string DataFolder => store.Dir;
+
+    /// <summary>
+    /// Switch from outside the window (the command line, a notification click): waits out whatever is running, then
+    /// switches unless already there. Null toggles.
+    /// </summary>
+    public async Task SwitchToAsync(Mode? target)
+    {
+        for (int i = 0; i < 100 && (IsBusy || vibeBusy); i++) await Task.Delay(200);
+        if (target is null || Mode != target) await ToggleModeAsync(automatic: false);
+    }
 
     /// <summary>What the last switch back opened, for the tray's welcome-back notification.</summary>
     public string LastReturnMessage { get; private set; } = "";

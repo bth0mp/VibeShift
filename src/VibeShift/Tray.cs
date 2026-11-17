@@ -30,7 +30,9 @@ public sealed class Tray : IDisposable
         Func<IReadOnlyList<(string Id, string Name, bool Running)>> aiApps,
         Func<string, bool, Task> setApp,
         Func<string?> playText,
-        Func<Task> play)
+        Func<Task> play,
+        Func<MainViewModel.GameStart> gameStart,
+        Action<MainViewModel.GameStart> setGameStart)
     {
         var menu = new ContextMenuStrip();
         var playItem = new ToolStripMenuItem("Play", null, async (_, _) => await play()) { Font = new Font(menu.Font, FontStyle.Bold) };
@@ -60,6 +62,20 @@ public sealed class Tray : IDisposable
         };
         menu.Items.Add(appsItem);
         menu.Items.Add(new ToolStripSeparator());
+        // The Settings page's "When a game starts", without opening the window: handy to pause Auto mode for an evening.
+        var startItem = new ToolStripMenuItem("When a game starts");
+        foreach (var (choice, label) in new[]
+                 {
+                     (MainViewModel.GameStart.Off, "Do nothing"), (MainViewModel.GameStart.Ask, "Ask me"),
+                     (MainViewModel.GameStart.Auto, "Switch automatically"),
+                 })
+            startItem.DropDownItems.Add(new ToolStripMenuItem(label, null, (_, _) => setGameStart(choice)) { Tag = choice });
+        startItem.DropDownOpening += (_, _) =>
+        {
+            foreach (ToolStripMenuItem item in startItem.DropDownItems) item.Checked = Equals(item.Tag, gameStart());
+        };
+        menu.Items.Add(startItem);
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open VibeShift", null, (_, _) => open());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => quit());
@@ -86,11 +102,13 @@ public sealed class Tray : IDisposable
 
     private Action? balloonClick;
 
-    public void Update(Mode mode)
+    /// <param name="detail">A second tooltip line while gaming: "Playing Deadlock · freed 2.4 GB".</param>
+    public void Update(Mode mode, string detail = "")
     {
         bool gaming = mode == Mode.Gaming;
         icon.Icon = gaming ? gamingIcon : codingIcon;
-        icon.Text = gaming ? "VibeShift: Gaming mode" : "VibeShift: Vibe coding mode";
+        string text = (gaming ? "VibeShift: Gaming mode" : "VibeShift: Vibe coding mode") + (gaming && detail.Length > 0 ? "\n" + detail : "");
+        icon.Text = text.Length <= 127 ? text : text[..126] + "\u2026"; // the tooltip's hard limit
         toggleItem.Text = gaming ? "Back to vibe coding" : "Start gaming";
     }
 
