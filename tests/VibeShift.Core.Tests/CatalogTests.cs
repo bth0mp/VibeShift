@@ -19,6 +19,13 @@ public class CatalogTests
         Assert.Null(Match("claude", path: null)); // unreadable path never matches a path rule
     }
 
+    [Fact] // the Store app, not GitHub's copilot.exe running in a terminal
+    public void Copilot_is_the_store_app_only()
+    {
+        Assert.Equal("copilot", Match("Copilot", @"C:\Program Files\WindowsApps\Microsoft.Copilot_1.25_x64__8wekyb3d8bbwe\Copilot.exe")?.Id);
+        Assert.Null(Match("copilot", @"C:\Users\u\AppData\Local\Microsoft\WinGet\Packages\GitHub.Copilot\copilot.exe"));
+    }
+
     [Fact]
     public void Names_match_case_insensitively() => Assert.Equal("cursor", Match("cursor", @"C:\x\Cursor.exe")?.Id);
 

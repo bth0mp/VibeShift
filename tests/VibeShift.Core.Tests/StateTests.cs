@@ -92,6 +92,32 @@ public sealed class StateTests : IDisposable
         Assert.Contains("30", File.ReadAllText(path + ".unread"));
     }
 
+    [Fact] // 2026-11-23 review: still locked at the first save, no copy could be made, the mark was dropped anyway,
+           // and the next save replaced the user's settings with defaults
+    public void A_file_still_locked_at_the_first_save_is_not_replaced()
+    {
+        var path = Path.Combine(dir, "settings.json");
+        File.WriteAllText(path, "{\"ForceCloseSeconds\": 30}");
+        var store = Store();
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var loaded = store.LoadSettings();
+            Assert.ThrowsAny<IOException>(() => store.SaveSettings(loaded));
+        }
+        Assert.Contains("30", File.ReadAllText(path));
+        store.SaveSettings(new Settings());
+        Assert.Contains("30", File.ReadAllText(path + ".unread"));
+    }
+
+    [Fact] // a hand-edited entry without an id loaded as null, and every switch back threw
+    public void A_closed_app_missing_its_id_is_dropped_on_load()
+    {
+        File.WriteAllText(Path.Combine(dir, "session.json"),
+            "{\"Closed\": [{\"Name\": \"X\", \"ExePath\": \"C:\\\\x.exe\"}, {\"EntryId\": \"cursor\", \"Name\": \"Cursor\"}]}");
+        var closed = Store().LoadSession()!.Closed;
+        Assert.Equal("cursor", Assert.Single(closed).EntryId);
+    }
+
     [Fact] // a file read fine is never copied aside
     public void A_file_that_was_read_leaves_no_unread_copy()
     {

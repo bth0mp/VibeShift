@@ -13,6 +13,11 @@ if (-not (Test-Path $exe)) { throw "Build first: $exe is missing" }
 if ($LASTEXITCODE -ne 0) { throw 'A game is running: not popping test windows over it' }
 if (Get-Process charmap -ErrorAction SilentlyContinue) { throw 'Character Map is already open: close it first (the test opens and closes it)' }
 $charmap = Join-Path $env:WINDIR 'System32\charmap.exe'
+# Every built-in row is switched off below. A row added to the catalog and not to this list would be closed for real.
+$builtInIds = 'claude-desktop,chatgpt,cursor,windsurf,copilot,m365copilot,ollama,lmstudio,mcp,vscode,docker-wsl,cli-agents,browsers,wallpaper-engine,powertoys,widgets'.Split(',')
+$catalogIds = [regex]::Matches((Get-Content (Join-Path $repo 'src\VibeShift.Core\Catalog\Catalog.cs') -Raw), 'new\("([a-z0-9-]+)",') | ForEach-Object { $_.Groups[1].Value }
+$unknown = @($catalogIds | Where-Object { $builtInIds -notcontains $_ })
+if ($catalogIds.Count -eq 0 -or $unknown.Count -gt 0) { throw "Catalog rows this script doesn't switch off: $($unknown -join ', ') (add them to `$builtInIds)" }
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @'
@@ -66,6 +71,7 @@ function Wait-Until($seconds, [scriptblock]$condition) {
 
 $dir = Join-Path $env:TEMP ('vibeshift-live-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $dir | Out-Null
+$oldData = $env:VIBESHIFT_DATA
 $env:VIBESHIFT_DATA = $dir
 $session = Join-Path $dir 'session.json'
 $log = Join-Path $dir 'vibeshift.log'
@@ -74,8 +80,7 @@ function Check($name, $ok) { if ($ok) { "  ok    $name" } else { "  FAIL  $name"
 function Logged($text) { (Test-Path $log) -and [bool](Select-String -Path $log -SimpleMatch $text -Quiet) }
 
 function Write-Settings($extra = @{}) {
-    $ids = 'claude-desktop,chatgpt,cursor,windsurf,copilot,m365copilot,ollama,lmstudio,mcp,vscode,docker-wsl,cli-agents,browsers,wallpaper-engine,powertoys,widgets'.Split(',')
-    $toggles = [ordered]@{}; foreach ($i in $ids) { $toggles[$i] = $false }
+    $toggles = [ordered]@{}; foreach ($i in $builtInIds) { $toggles[$i] = $false }
     $s = [ordered]@{ SchemaVersion = 2; Theme = 'Dark'; Toggles = $toggles; VibeApps = @(); GameApps = @(); MyGames = @()
                      AutoMode = $false; AskOnGameStart = $false; ReturnWhenGameCloses = $false; Hotkeys = $false; StartWithWindows = $false }
     foreach ($k in $extra.Keys) { $s[$k] = $extra[$k] }
@@ -91,6 +96,7 @@ function Start-Copy([string[]]$arguments = @('--tray')) {
     $null = $p.Handle
     Start-Sleep 6
     if ($p.HasExited) { throw 'the test copy exited on start' }
+    if (Test-Path (Join-Path $dir 'settings.json.bad')) { Stop-Copy $p; throw 'the test settings were rejected, so defaults (with real apps on) applied' }
     $p
 }
 function Stop-Copy($p) { if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force; $p.WaitForExit(5000) | Out-Null } }
@@ -133,6 +139,10 @@ try {
     & $exe --gaming; Start-Sleep 4; Check '--gaming again changes nothing' (Test-Path $session)
     & $exe --coding; Check '--coding switches back' (Wait-Until 20 { -not (Test-Path $session) })
     & $exe --toggle; Check '--toggle switches to gaming' (Wait-Until 20 { Test-Path $session })
+    # session.json is written as a switch starts. A toggle sent before it ends means "the other mode" as things stood,
+    # so it wouldn't undo it: wait for the switch to finish, as someone watching the tray would.
+    $switched = { @(Select-String -Path $log -SimpleMatch 'Gaming mode (manual)').Count -ge 2 }
+    Check '...and finishes' (Wait-Until 20 $switched); Start-Sleep 1
     & $exe --toggle; Check '--toggle switches back' (Wait-Until 20 { -not (Test-Path $session) })
     Check 'the running copy stayed up and logged the commands' (-not $vs.HasExited -and (Logged 'Command line: --gaming') -and (Logged 'Command line: --toggle'))
     Stop-Copy $vs
@@ -175,6 +185,12 @@ try {
     Check 'a session from before the last sign-out switches back by itself' (Wait-Until 45 { -not (Test-Path $session) })
     Check '...reopening what it closed, and saying why' ((Wait-Until 10 { Get-Process charmap -ErrorAction SilentlyContinue }) -and (Logged 'from before the last sign-out'))
     Stop-Copy $vs
+    Close-Charmap
+    Reset; Write-Session ([DateTime]::new(2000, 1, 1, 0, 0, 0, [DateTimeKind]::Utc))
+    $vs = Start-Copy @('--gaming')
+    Start-Sleep 20
+    Check '...but started with --gaming, it stays in gaming mode and waits for a game, without the 2-hour reminder' ((Test-Path $session) -and (Logged 'now waiting for a game, as asked') -and -not (Logged 'Reminded') -and -not (Get-Process charmap -ErrorAction SilentlyContinue))
+    Stop-Copy $vs
 }
 finally {
     Stop-Copy $vs
@@ -182,6 +198,7 @@ finally {
     if ($failed.Count -gt 0 -and (Test-Path $log)) { ''; 'log of the last test:'; Get-Content $log }
     Start-Sleep 1
     Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+    $env:VIBESHIFT_DATA = $oldData
 }
 ''
 if ($failed.Count -gt 0) { throw "$($failed.Count) live check(s) failed: $($failed -join '; ')" }

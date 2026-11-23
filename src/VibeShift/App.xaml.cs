@@ -25,6 +25,7 @@ public partial class App : Application
     // before starting, so a misdetection or an unsaved file can be saved with one click.
     private readonly AutoModeTracker tracker = new(TimeSpan.FromSeconds(10), startDelay: TimeSpan.FromSeconds(10));
     private readonly IdleReminder reminder = new(TimeSpan.FromHours(2));
+    private readonly DateTime startedUtc = DateTime.UtcNow;
     private Dictionary<int, string> loggedGames = [];
     private Mutex? instance;
     private EventWaitHandle? showSignal;
@@ -34,6 +35,7 @@ public partial class App : Application
     private Hotkeys? hotkeys;
     private GameWatcher? watcher;
     private bool quitting, quitAsked, ticking, started;
+    private bool leftoverSession; // started in gaming mode, and nothing has switched since
     private const string InstanceName = @"Local\VibeShift.Instance";
     private string instanceName = InstanceName;
 
@@ -55,10 +57,12 @@ public partial class App : Application
             return;
         }
 
+        string? command = e.Args.FirstOrDefault(a => Commands.Contains(a));
+
         // Started from the terminal of an app VibeShift closes (Claude Code, an AI app's shell)? Closing that app for
         // gaming would end its job and VibeShift with it, mid-switch, and the app's file virtualization would hide the
         // user's real settings. Hand over to a copy Explorer starts outside it.
-        if (HandedOverToExplorer())
+        if (HandedOverToExplorer(command))
         {
             Shutdown();
             return;
@@ -72,10 +76,9 @@ public partial class App : Application
         instanceName = InstanceName + scope;
         instance = new Mutex(true, instanceName, out bool first);
         // A second launch signals the first and leaves: plain, it shows the window; with --gaming, --coding or --toggle
-        // it switches modes, so a Stream Deck button, a script or a game's launch options can drive VibeShift.
-        string? command = e.Args.FirstOrDefault(a => Commands.Contains(a));
+        // it switches modes, so a Stream Deck button or a script can drive VibeShift.
         var signals = new[] { "Show" }.Concat(Commands.Select(c => "Cmd" + c)).Select(name =>
-            new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\VibeShift.{name.Replace("--", ".")}{scope}")).ToArray();
+            new EventWaitHandle(false, EventResetMode.AutoReset, SignalName(name, scope))).ToArray();
         showSignal = signals[0];
         if (!first)
         {
@@ -123,6 +126,7 @@ public partial class App : Application
             bool signedOut = !vm.SessionPausedServices
                              && vm.SessionStartedUtc < ProcessQuery.SignInTimeUtc(ProcessSnapshot.Take(), me.SessionId);
             tracker.Resume(vm.SessionIsAutomatic, settings.ReturnWhenGameCloses, DateTime.UtcNow, signedOut);
+            leftoverSession = true;
             Log.Write(signedOut ? "Started in gaming mode, from before the last sign-out" : "Started in gaming mode");
         }
         window = new MainWindow(vm);
@@ -155,6 +159,7 @@ public partial class App : Application
             // Raised after a failed switch too (to keep the tray in step), with the mode unchanged.
             bool changed = mode != shownMode;
             shownMode = mode;
+            leftoverSession = false;
             tray.Update(mode, vm.TrayDetail);
             reminder.Reset();
             loggedGames = [];
@@ -205,12 +210,13 @@ public partial class App : Application
     /// Restarts VibeShift through Explorer when it shares a job with an app it may close. True once the new copy (or
     /// one already running) holds the single-instance lock; false to carry on here.
     /// </summary>
-    private static bool HandedOverToExplorer()
+    private static bool HandedOverToExplorer(string? command)
     {
-        // ponytail: Explorer passes on neither VIBESHIFT_DATA nor arguments, so test copies and --tray starts stay put;
-        // a temporary .lnk could carry the arguments if tray starts from a terminal ever matter
+        // ponytail: Explorer passes on neither VIBESHIFT_DATA nor arguments, so test copies and --tray starts stay put,
+        // and a command (--gaming, an AI agent's likeliest way to start VibeShift) is signalled to the new copy once it
+        // runs, which shows its window like any plain start; a temporary .lnk could carry --tray if that ever matters
         if (Environment.GetEnvironmentVariable(JsonStore.DataDirVariable) is { Length: > 0 }
-            || Environment.GetCommandLineArgs().Length > 1 || Environment.ProcessPath is not { } exe) return false;
+            || Environment.GetCommandLineArgs().Length > (command is null ? 1 : 2) || Environment.ProcessPath is not { } exe) return false;
         if (Mutex.TryOpenExisting(InstanceName, out var running))
         {
             running.Dispose();
@@ -234,6 +240,7 @@ public partial class App : Application
                 if (Mutex.TryOpenExisting(InstanceName, out var started))
                 {
                     started.Dispose();
+                    if (command is not null) SignalWhenReady("Cmd" + command);
                     return true;
                 }
             }
@@ -243,6 +250,25 @@ public partial class App : Application
             // a failed check must never stop VibeShift starting: carry on here, as before
         }
         return false;
+    }
+
+    private static string SignalName(string name, string scope) => $@"Local\VibeShift.{name.Replace("--", ".")}{scope}";
+
+    /// <summary>
+    /// Sets a signal of a copy that has just taken the lock. It creates its signals right after the lock, so wait for
+    /// them to exist: one set before then would vanish with this copy.
+    /// </summary>
+    private static void SignalWhenReady(string name)
+    {
+        for (int i = 0; i < 25; i++)
+        {
+            if (EventWaitHandle.TryOpenExisting(SignalName(name, ""), out var signal))
+            {
+                using (signal) signal.Set();
+                return;
+            }
+            Thread.Sleep(200);
+        }
     }
 
     /// <summary>
@@ -320,6 +346,17 @@ public partial class App : Application
             for (int i = 0; i < 50 && watcher is null; i++) await Task.Delay(200);
             Log.Write("Command line: " + command);
             await vm.SwitchToAsync(command switch { "--gaming" => Mode.Gaming, "--coding" => Mode.Coding, _ => null });
+            // Gaming mode left over from before this start (a shutdown, a crash) may be set to switch back within
+            // seconds: after a sign-out it counts as the game closed. --gaming then did nothing, and the apps came back
+            // ~10 s later (2026-11-23 review). The command says a game is about to start: wait for it, as after a click.
+            // ponytail: the old session is kept as it is, so apps started since sign-in stay open; carrying its reopen
+            // list into a fresh Start gaming would close them too
+            if (leftoverSession && vm.Mode == Mode.Gaming)
+            {
+                tracker.ManualSwitch(Mode.Gaming, vm.CurrentGamePids, vm.Settings.ReturnWhenGameCloses);
+                Log.Write("Gaming mode from before this start: now waiting for a game, as asked");
+            }
+            leftoverSession = false;
         }
         catch (Exception e)
         {
@@ -334,7 +371,10 @@ public partial class App : Application
         Log.Write($"Ask me: {name} started");
         tray?.Notify($"{name} started", "Click here to switch to gaming mode and close your apps.", () =>
         {
-            if (vm!.Mode == Mode.Coding) _ = vm.SwitchToAsync(Mode.Gaming);
+            // Only while a game still runs: the notification can be clicked from the notification centre long after
+            // the game closed, and closing every app then would be a surprise. (Any game, not just this one: a
+            // launcher may have handed over to the real exe since.)
+            if (vm!.Mode == Mode.Coding && vm.FindGames?.Invoke().Count > 0) _ = vm.SwitchToAsync(Mode.Gaming);
             else ShowWindow();
         });
     }
@@ -374,8 +414,10 @@ public partial class App : Application
                     AskToStart(found.FirstOrDefault(g => g.Path is not null).Path);
                 else if (action != AutoAction.None)
                     await vm.ToggleModeAsync(automatic: true);
+                // Counted from this start at the earliest: games before it went unseen. A session left from yesterday
+                // said "no game for 2 hours" 3 s after starting, even right after --gaming (2026-11-23 live check).
                 else if (gaming && vm.SessionStartedUtc is { } since
-                         && reminder.Due(games.Count > 0, AcceptsNotifications(), since, DateTime.UtcNow))
+                         && reminder.Due(games.Count > 0, AcceptsNotifications(), since > startedUtc ? since : startedUtc, DateTime.UtcNow))
                 {
                     Log.Write("Reminded: still in gaming mode, no game for 2 hours");
                     tray?.Notify("Still in gaming mode", "No game has run for 2 hours. Click here, then Back to vibe coding to reopen your apps.");

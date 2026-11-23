@@ -19,8 +19,9 @@ public class SwitchPlannerTests
     private IReadOnlyList<Detected> Detect(IReadOnlyList<ProcInfo> all, Func<ProcInfo, bool>? blocked = null) =>
         SwitchPlanner.Detect(all, AppCatalog.BuiltIn, pid => paths.GetValueOrDefault(pid), pid => cmds.GetValueOrDefault(pid), blocked ?? (_ => false));
 
-    private GamingPlan Plan(IReadOnlyList<ProcInfo> all, bool automatic = false, int selfPid = 99_999, Func<ProcInfo, ProcInfo, bool>? spare = null) =>
-        SwitchPlanner.PlanGaming(all, Detect(all), settings, automatic, selfPid, spare ?? ((_, _) => false));
+    private GamingPlan Plan(IReadOnlyList<ProcInfo> all, bool automatic = false, int selfPid = 99_999, Func<ProcInfo, ProcInfo, bool>? spare = null,
+        IReadOnlyCollection<int>? job = null) =>
+        SwitchPlanner.PlanGaming(all, Detect(all), settings, automatic, selfPid, spare ?? ((_, _) => false), job);
 
     [Fact]
     public void Only_switched_on_running_rows_close()
@@ -63,6 +64,30 @@ public class SwitchPlannerTests
         Assert.True(SwitchPlanner.SharesJobWithApp([6, 7, 300], 300, detected));
         Assert.False(SwitchPlanner.SharesJobWithApp([300, 400], 300, detected)); // a job of its own, from Explorer
         Assert.False(SwitchPlanner.SharesJobWithApp([], 300, detected)); // not in a job
+    }
+
+    [Fact] // 2026-11-23 review: the job check ran only at a plain start, so `VibeShift --tray` from Claude Code's terminal
+           // (that shell since exited) closed Claude, whose job then took VibeShift down mid-switch
+    public void An_app_sharing_VibeShifts_job_is_left_running_with_whatever_started_it()
+    {
+        var all = new[] { P(5, 0, "claude"), P(6, 5, "claude"), P(7, 6, "node"), P(300, 555, "VibeShift"), P(20, 0, "Cursor") };
+        paths[5] = Desk;
+        paths[6] = Cli;
+        settings.Toggles["cli-agents"] = true;
+        var plan = Plan(all, selfPid: 300, job: [6, 7, 300]);
+        Assert.Equal(new[] { "cursor" }, plan.Close.Select(c => c.Entry.Id)); // not Claude (holds the job), nor the CLI in it
+        Assert.Contains(Plan(all, selfPid: 300).Close, c => c.Entry.Id == "claude-desktop"); // no job: closes as usual
+    }
+
+    [Fact]
+    public void A_background_only_browser_and_its_helpers_are_not_the_browser_open_again()
+    {
+        var all = new[] { P(1, 0, "msedge"), P(2, 1, "msedge"), P(3, 0, "chrome"), P(4, 3, "chrome") };
+        cmds[1] = "msedge.exe --no-startup-window --win-session-start";
+        cmds[2] = "msedge.exe --type=renderer";
+        cmds[3] = "chrome.exe --no-startup-window";
+        var hidden = SwitchPlanner.BackgroundOnlyTrees(all, ["msedge", "chrome"], pid => cmds.GetValueOrDefault(pid), pid => pid == 3);
+        Assert.Equal(new[] { 1, 2 }, hidden.OrderBy(x => x)); // Chrome has a window: it really is open
     }
 
     [Fact] // audit A3: Steam started from Claude (or a steam:// link), minimised to the tray, with the game under it

@@ -644,8 +644,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public async Task SwitchToAsync(Mode? target)
     {
+        // A toggle means "the other mode" as things stand now. Decided after the wait, it undid a switch already
+        // under way (2026-11-23 review): the automatic switch back running, a toggle pressed, gaming mode again.
+        target ??= Mode == Mode.Coding ? Mode.Gaming : Mode.Coding;
         for (int i = 0; i < 100 && (IsBusy || vibeBusy); i++) await Task.Delay(200);
-        if (target is null || Mode != target) await ToggleModeAsync(automatic: false);
+        if (Mode != target) await ToggleModeAsync(automatic: false);
     }
 
     /// <summary>What the last switch back opened, for the tray's welcome-back notification.</summary>
@@ -814,7 +817,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return (det, ProcessQuery.AvailableRamBytes(), est, (offers, seen, paused));
             });
             RecordLaunchTargets(suggestions.seen);
-            SetPausedServices(suggestions.paused);
+            // Only drop services this check saw restarted: a switch back that finished while it ran may have added some.
+            SetPausedServices(Settings.PausedServices.Where(n => suggestions.paused.Contains(n) || !snapshot.PausedServices.Contains(n)).ToList());
             Apply(entries, detected, avail, estimated);
             ApplyVibe(entries, detected);
             SyncSuggestions(suggestions.offers);

@@ -80,16 +80,18 @@ public sealed class Switcher(JsonStore store)
         int self = Environment.ProcessId;
         int mySession = MySessionId();
         var games = gamePids.ToHashSet();
-        var detected = SwitchPlanner.Detect(all, Entries(s), ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
-            p => p.SessionId != mySession || BlockList.IsBlocked(p.Name, ProcessQuery.GetImagePath(p.Pid), p.Pid, self, games));
+        // The game and anything it started: a browser it opened for a login page is the game's, not the browsers row's.
         var gameTree = games.SelectMany(g => ProcessTree.Descendants(all, g)).Select(p => p.Pid).ToHashSet();
+        var detected = SwitchPlanner.Detect(all, Entries(s), ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
+            p => p.SessionId != mySession || gameTree.Contains(p.Pid)
+                 || BlockList.IsBlocked(p.Name, ProcessQuery.GetImagePath(p.Pid), p.Pid, self, games));
         var plan = SwitchPlanner.PlanGaming(all, detected, s, automatic, self, (node, root) =>
         {
             if (gameTree.Contains(node.Pid) || node.SessionId != mySession) return true;
             var path = ProcessQuery.GetImagePath(node.Pid);
             return BlockList.IsBlocked(node.Name, path, node.Pid, self, games)
                 || SwitchPlanner.IsSeparateApp(path, ProcessQuery.GetImagePath(root.Pid), ProcessQuery.HasVisibleWindow(node.Pid));
-        });
+        }, ProcessQuery.MyJobPids());
         return (all, plan);
     }
 
@@ -108,8 +110,12 @@ public sealed class Switcher(JsonStore store)
     private static IReadOnlyList<Detected> Running(Settings s)
     {
         int mySession = MySessionId();
-        return SwitchPlanner.Detect(ProcessSnapshot.Take(), Entries(s), ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
-            p => p.SessionId != mySession);
+        var all = ProcessSnapshot.Take();
+        var entries = Entries(s);
+        var hidden = SwitchPlanner.BackgroundOnlyTrees(all, entries.SelectMany(e => e.Launchers ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            ProcessQuery.GetCommandLine, ProcessQuery.HasVisibleWindow);
+        return SwitchPlanner.Detect(all, entries, ProcessQuery.GetImagePath, ProcessQuery.GetCommandLine,
+            p => p.SessionId != mySession || hidden.Contains(p.Pid));
     }
 
     private SessionState StartGaming(Settings s, bool automatic, IReadOnlyCollection<int> gamePids, IProgress<string>? progress)

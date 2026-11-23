@@ -69,7 +69,9 @@ public static class Services
             {
                 using var sc = new ServiceController(name);
                 if (sc.Status == want) continue;
-                if (verb == "stop") sc.Stop(); else sc.Start();
+                // Not the services that depend on it: nothing would start those again. With one running, this fails
+                // and the service stays up, which only costs the boost.
+                if (verb == "stop") sc.Stop(stopDependentServices: false); else sc.Start();
                 sc.WaitForStatus(want, TimeSpan.FromSeconds(15));
             }
             catch (Exception e) when (e is InvalidOperationException or System.ServiceProcess.TimeoutException or Win32Exception)

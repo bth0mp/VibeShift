@@ -97,10 +97,13 @@ public sealed class Tray : IDisposable
         {
             if (e.Button == MouseButtons.Left) open();
         };
-        icon.BalloonTipClicked += (_, _) => (balloonClick ?? open)();
+        // A click doesn't say which notification it was: only the newest has an action, and only while it's fresh.
+        // Later clicks (from the notification centre, on any older one) just open VibeShift.
+        icon.BalloonTipClicked += (_, _) => ((DateTime.UtcNow <= balloonClickUntil ? balloonClick : null) ?? open)();
     }
 
     private Action? balloonClick;
+    private DateTime balloonClickUntil;
 
     /// <param name="detail">A second tooltip line while gaming: "Playing Deadlock · freed 2.4 GB".</param>
     public void Update(Mode mode, string detail = "")
@@ -119,6 +122,7 @@ public sealed class Tray : IDisposable
     public void Notify(string title, string text, Action? onClick = null)
     {
         balloonClick = onClick;
+        balloonClickUntil = DateTime.UtcNow.AddSeconds(30);
         icon.ShowBalloonTip(5000, title, text, ToolTipIcon.None);
     }
 

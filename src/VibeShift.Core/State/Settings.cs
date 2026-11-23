@@ -158,7 +158,8 @@ public sealed class SessionState
     /// <summary>Drops null list entries from a hand-edited file (they'd throw on every switch back).</summary>
     internal void Normalize()
     {
-        Closed.RemoveAll(c => c is null);
+        // A hand-edited entry missing its id or name loads with a null one, and every switch back then threw.
+        Closed.RemoveAll(c => c is null || c.EntryId is null || c.Name is null);
         StoppedServices.RemoveAll(x => x is null);
         ClosedEntryIds.RemoveAll(x => x is null);
     }

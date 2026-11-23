@@ -35,7 +35,8 @@ public static class AppCatalog
         new("chatgpt", "ChatGPT", EntryKind.App, ["ChatGPT"], true, true, "#10a37f"),
         new("cursor", "Cursor", EntryKind.App, ["Cursor"], true, true, "#3b82f6"),
         new("windsurf", "Windsurf", EntryKind.App, ["Windsurf"], true, true, "#14b8a6"),
-        new("copilot", "Copilot", EntryKind.App, ["Copilot"], true, true, "#0ea5e9"),
+        // The Microsoft Copilot app is a Store app; a copilot.exe elsewhere is GitHub's command-line agent in a terminal.
+        new("copilot", "Copilot", EntryKind.App, ["Copilot"], true, true, "#0ea5e9", PathContains: [@"\WindowsApps\"]),
         new("m365copilot", "Microsoft 365 Copilot", EntryKind.App, ["M365Copilot"], true, true, "#2563eb"),
         new("ollama", "Ollama", EntryKind.App, ["ollama app", "ollama"], true, true, "#6b7280"),
         new("lmstudio", "LM Studio", EntryKind.App, ["LM Studio", "lms"], true, true, "#6366f1"),

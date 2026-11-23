@@ -20,7 +20,9 @@ public sealed class AutoModeTracker(TimeSpan backDelay, TimeSpan startDelay = de
     private bool returnArmed; // switch back once this session's games have closed
     private bool sawGame;
     private DateTime lastGameSeen;
-    private DateTime? countdownSince; // a new game was seen: Auto mode is counting down, or "Ask me" has asked
+    private DateTime? countdownSince; // a new game was seen: Auto mode is counting down
+    private bool asked; // "Ask me" has asked about the game(s) running now. Kept apart from the countdown: a game asked
+                        // about and ignored, then Auto mode turned on, still gets the countdown (2026-11-23 review)
 
     /// <param name="autoStart">Auto mode (or "Ask me") is on: a new game may start gaming mode, or ask to.</param>
     /// <param name="canSwitch">
@@ -43,11 +45,18 @@ public sealed class AutoModeTracker(TimeSpan backDelay, TimeSpan startDelay = de
             if (!autoStart || !gamePids.Any(pid => !suppressed.Contains(pid)))
             {
                 countdownSince = null; // gone before the countdown ended (a splash, a launcher): nothing starts
+                asked = false;
                 return AutoAction.None;
+            }
+            if (askOnly)
+            {
+                countdownSince = null;
+                if (asked) return AutoAction.None;
+                asked = true;
+                return AutoAction.Ask;
             }
             bool fresh = countdownSince is null;
             countdownSince ??= nowUtc;
-            if (askOnly) return fresh ? AutoAction.Ask : AutoAction.None;
             if (canSwitch && nowUtc - countdownSince >= startDelay)
             {
                 countdownSince = null;

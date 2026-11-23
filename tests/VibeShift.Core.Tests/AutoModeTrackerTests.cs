@@ -60,6 +60,24 @@ public class AutoModeTrackerTests
         Assert.Equal(AutoAction.Ask, T.Update(new[] { 9 }, Mode.Coding, t0, askOnly: true)); // also with no countdown configured
     }
 
+    [Fact] // 2026-11-23 review: Ask me's question started the countdown clock, so switching to Automatic while that game
+    // ran closed every app at once, with no "Gaming mode in 10 seconds" to click
+    public void Turning_on_Auto_mode_after_Ask_me_still_counts_down()
+    {
+        Assert.Equal(AutoAction.Ask, C.Update(new[] { 7 }, Mode.Coding, t0, askOnly: true));
+        Assert.Equal(AutoAction.StartSoon, C.Update(new[] { 7 }, Mode.Coding, t0.AddMinutes(5)));
+        Assert.Equal(AutoAction.None, C.Update(new[] { 7 }, Mode.Coding, t0.AddMinutes(5).AddSeconds(3)));
+        Assert.Equal(AutoAction.StartGaming, C.Update(new[] { 7 }, Mode.Coding, t0.AddMinutes(5).AddSeconds(10)));
+    }
+
+    [Fact] // ...and the other way: Auto mode counting down, then Ask me, still asks once
+    public void Turning_on_Ask_me_during_the_countdown_asks()
+    {
+        Assert.Equal(AutoAction.StartSoon, C.Update(new[] { 7 }, Mode.Coding, t0));
+        Assert.Equal(AutoAction.Ask, C.Update(new[] { 7 }, Mode.Coding, t0.AddSeconds(3), askOnly: true));
+        Assert.Equal(AutoAction.None, C.Update(new[] { 7 }, Mode.Coding, t0.AddSeconds(30), askOnly: true));
+    }
+
     [Fact] // answered "no" by switching back by hand: that game isn't asked about again
     public void Ask_mode_does_not_ask_again_about_a_game_switched_back_from()
     {

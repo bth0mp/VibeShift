@@ -40,7 +40,10 @@ public sealed class JsonStore(string dir)
 
     public SessionState? LoadSession()
     {
-        var s = Load<SessionState>(SessionPath);
+        // Longer than for the other files: a session.json that can't be read starts VibeShift in vibe coding mode, and
+        // what it closed is then never reopened.
+        // ponytail: a lock of over 5 s still reads as no session; retrying from the poll would cover even that
+        var s = Load<SessionState>(SessionPath, attempts: 25);
         s?.Normalize();
         return s;
     }
@@ -88,7 +91,7 @@ public sealed class JsonStore(string dir)
         Save(StatsPath, all);
     }
 
-    private T? Load<T>(string path) where T : class
+    private T? Load<T>(string path, int attempts = 5) where T : class
     {
         if (!File.Exists(path)) return null;
         for (int attempt = 1; ; attempt++)
@@ -114,7 +117,7 @@ public sealed class JsonStore(string dir)
             {
                 // Locked (e.g. by antivirus or a sync tool) isn't corrupt: retry briefly, then use defaults
                 // and leave the file alone.
-                if (attempt < 5)
+                if (attempt < attempts)
                 {
                     Thread.Sleep(200);
                     continue;
@@ -136,26 +139,34 @@ public sealed class JsonStore(string dir)
             file.Flush(flushToDisk: true); // a power cut mid-game must not leave an empty session.json
         }
         bool keep;
-        lock (unread) keep = unread.Remove(path);
-        if (keep) KeepUnread(path);
+        lock (unread) keep = unread.Contains(path);
+        if (keep)
+        {
+            // Unmarked only once the copy is made. Still locked at the first save, the copy failed, the mark was gone
+            // anyway, and the next save replaced the file with defaults after all (2026-11-23 review).
+            KeepUnread(path);
+            lock (unread) unread.Remove(path);
+        }
         Retry(() => File.Move(tmp, path, overwrite: true));
     }
 
     /// <summary>
     /// This file was never read (it was locked), so what is about to replace it is defaults, not the user's choices.
-    /// Keep the original as *.unread so nothing is lost for good.
+    /// Keep the original as *.unread so nothing is lost for good. Throws if it can't: the save then fails and the
+    /// original stays.
     /// </summary>
     private static void KeepUnread(string path)
     {
+        if (!File.Exists(path)) return;
         try
         {
-            if (!File.Exists(path)) return;
-            File.Copy(path, path + ".unread", overwrite: true);
-            Log.Write($"{Path.GetFileName(path)} couldn't be read earlier and is being replaced; the original is kept as .unread");
+            Retry(() => File.Copy(path, path + ".unread", overwrite: true));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            Log.Write($"Couldn't keep a copy of the unread {Path.GetFileName(path)}: {e.Message}");
+            Log.Write($"Not replacing {Path.GetFileName(path)}: it couldn't be read earlier, and no copy could be kept ({e.Message})");
+            throw;
         }
+        Log.Write($"{Path.GetFileName(path)} couldn't be read earlier and is being replaced; the original is kept as .unread");
     }
 }

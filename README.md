@@ -59,7 +59,7 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 
 If another app already uses one of these, Settings says so.
 
-**Command line** (for a Stream Deck button, an AutoHotkey script, a scheduled task or a game's launch options)
+**Command line** (for a Stream Deck button, an AutoHotkey script or a scheduled task)
 
 | Command | Does |
 |---|---|

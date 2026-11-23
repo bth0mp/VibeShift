@@ -77,15 +77,21 @@ public static class SwitchPlanner
     /// (process, root it was found under) -> true to keep that process and everything under it alive:
     /// the game, Windows' own processes, separate apps the target merely launched.
     /// </param>
+    /// <param name="jobPids">The processes in VibeShift's own job (<see cref="ProcessQuery.MyJobPids"/>), if any.</param>
     public static GamingPlan PlanGaming(
         IReadOnlyList<ProcInfo> all,
         IReadOnlyList<Detected> detected,
         Settings s,
         bool automatic,
         int selfPid,
-        Func<ProcInfo, ProcInfo, bool> spare)
+        Func<ProcInfo, ProcInfo, bool> spare,
+        IReadOnlyCollection<int>? jobPids = null)
     {
         var selfChain = ProcessTree.Ancestors(all, selfPid);
+        // Sharing a job with an app (started from its terminal, which has since exited, so the chain above is broken):
+        // that job's processes, and whatever started them (the app holding the job), stay. Closing them would end the
+        // job and VibeShift with it, mid-switch (2026-11-23 review). Empty when started from Explorer: no job.
+        var jobAndOwners = (jobPids ?? []).Where(pid => pid != selfPid).SelectMany(pid => ProcessTree.Ancestors(all, pid)).ToHashSet();
         // An app whose row is off, or that's opened for gaming, survives even when a switched-on app started it.
         bool Closes(CatalogEntry e) => s.IsOn(e) && !s.GameApps.Contains(e.Id);
         var offRoots = detected.Where(d => !Closes(d.Entry)).SelectMany(d => d.Roots).Select(r => r.Pid).ToHashSet();
@@ -95,7 +101,7 @@ public static class SwitchPlanner
             if (!Closes(d.Entry) || d.Roots.Count == 0) continue;
             // VibeShift runs inside this app (e.g. started from its terminal): closing part of it would leave
             // a broken app we couldn't reopen, so leave the whole app alone.
-            if (d.Roots.Any(r => selfChain.Contains(r.Pid))) continue;
+            if (d.Roots.Any(r => selfChain.Contains(r.Pid)) || d.Matched.Any(p => jobAndOwners.Contains(p.Pid))) continue;
             // Parents first: a supervisor that's already dead can't respawn the children killed after it.
             // The row's own processes are never spared (Docker Desktop's window under its backend isn't a separate app).
             // A game store it started (Steam from a steam:// link, often windowless in the tray) survives with
@@ -215,6 +221,20 @@ public static class SwitchPlanner
     /// </summary>
     public static bool IsBackgroundOnly(string? commandLine, bool hasVisibleWindow) =>
         !hasVisibleWindow && commandLine?.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>
+    /// Background-only browsers (see <see cref="IsBackgroundOnly"/>) and everything under them. Running, but with nothing
+    /// to see, so they don't count as the browser being open again: after a restart, Edge's startup boost meant the Edge
+    /// closed for gaming never came back (2026-11-23 review).
+    /// </summary>
+    public static IReadOnlySet<int> BackgroundOnlyTrees(
+        IReadOnlyList<ProcInfo> all, IReadOnlyCollection<string> names, Func<int, string?> commandLine, Func<int, bool> hasVisibleWindow) =>
+        all.Where(p => names.Contains(p.Name, StringComparer.OrdinalIgnoreCase)
+                       && commandLine(p.Pid) is { } cmd && cmd.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase)
+                       && IsBackgroundOnly(cmd, hasVisibleWindow(p.Pid)))
+            .SelectMany(p => ProcessTree.Descendants(all, p.Pid))
+            .Select(p => p.Pid)
+            .ToHashSet();
 
     /// <summary>The processes to relaunch an app by: its launcher exes, topmost first (see CatalogEntry.Launchers).</summary>
     public static IReadOnlyList<ProcInfo> LauncherRoots(IReadOnlyList<ProcInfo> all, Detected d)
