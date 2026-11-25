@@ -78,8 +78,20 @@ public class GameTests
     [InlineData("", true)]
     [InlineData(@"D:\games\Overwatch", false)]
     [InlineData(@"C:\Program Files (x86)\Steam\steamapps\common", false)]
+    // 2026-11-25 review: only an exact match was refused, so a record saying C:\Users made Cursor and VS Code "games"
+    [InlineData(@"C:\Users", true)]
+    [InlineData(@"C:\Users\bob\AppData", true)]
+    [InlineData(@"C:\Users\bob\AppData\Local\Programs", true)]
+    [InlineData(@"C:\ProgramData", true)]
+    [InlineData(@"C:\Users\bob\Games\Hades", false)]
+    [InlineData(@"C:\Users\bob\AppData\Local\Roblox\Versions", false)]
+    [InlineData(@"C:\Program", false)] // a name that merely starts the same isn't a folder above
     public void Folders_too_broad_to_be_a_game_library_are_refused(string root, bool tooBroad) =>
-        Assert.Equal(tooBroad, GameLibraries.IsTooBroad(root, [@"C:\Program Files", @"C:\Program Files (x86)", @"C:\Windows"]));
+        Assert.Equal(tooBroad, GameLibraries.IsTooBroad(root,
+        [
+            @"C:\Program Files", @"C:\Program Files (x86)", @"C:\Windows", @"C:\Users\bob", @"C:\ProgramData",
+            @"C:\Users\bob\AppData\Local", @"C:\Users\bob\AppData\Local\Programs",
+        ]));
 
     [Theory] // a store's own window under a library root is not a game
     [InlineData(@"D:\games\Battle.net\Battle.net.exe")]

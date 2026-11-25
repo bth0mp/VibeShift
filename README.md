@@ -57,7 +57,7 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 | **Ctrl+Alt+V** | Open all AI apps |
 | **Ctrl+Alt+P** | Play your game |
 
-If another app already uses one of these, Settings says so.
+If another app already uses one of these, Settings says so. A shortcut is also left off when your keyboard types a character with it: Ctrl+Alt is the same as AltGr, so on a Hungarian or Czech keyboard Ctrl+Alt+V is how you type @. Settings says which ones are off.
 
 **Command line** (for a Stream Deck button, an AutoHotkey script or a scheduled task)
 
@@ -87,7 +87,7 @@ If VibeShift is already running, the command is passed to it and returns straigh
 **Updates**
 
 - **Settings → About → Check for updates** asks GitHub for the latest release. If there's a newer one, one click downloads it, checks it against the SHA-256 GitHub publishes for it, swaps it in and restarts VibeShift. Your settings and any gaming session carry over.
-- Turn on **Check for updates automatically** to have VibeShift check once a day. It's off until you turn it on, and VibeShift never updates without your click.
+- Turn on **Check for updates automatically** to have VibeShift check when it starts and once a day after that. It's off until you turn it on, and VibeShift never updates without your click.
 
 Closing the window keeps VibeShift running as a small icon by the clock, with a green dot in vibe coding mode and a purple one while gaming. Hover over it while gaming to see what you're playing and how much RAM was freed. Right-click it to switch modes, change **When a game starts** (handy for pausing Auto mode for an evening) or quit. Quitting in gaming mode asks first, since the apps it closed would stay closed: **Reopen and quit** brings them back. Windows 11 tucks new icons under the **^** arrow; drag it onto the taskbar to keep it in sight, and turn on **Start with Windows** in Settings so it's always there.
 
@@ -115,7 +115,7 @@ Closing the window keeps VibeShift running as a small icon by the clock, with a 
 - **When apps show up.** An app appears in VibeShift once it has seen it running. Use **+ Add app** to add any other program.
 - **MCP servers.** VibeShift spots these by their command line (`mcp`, `modelcontextprotocol`, `desktop-commander`). Other Node or Python processes, such as language servers, dev servers and your own scripts, are left alone. With the MCP row switched on, every MCP server stops, including ones used by apps you keep open. Those apps get their tools back when they restart.
 - **Using the most RAM.** The Apps page lists other apps using a lot of memory right now, each with an **+ Add** button. Windows itself, games and game launchers like Steam are never listed.
-- **Browsers and your tabs.** The Web browsers row ends the browser rather than asking it to close, because that's what makes it restore every tab when it reopens. Want to keep a music tab playing while you game? Leave this row off and let the browser sleep idle tabs instead: Firefox does this on its own when memory runs low, Chrome has **Memory Saver**, Edge has **Sleeping tabs**, and the free **Auto Tab Discard** extension lets you choose exactly what stays awake.
+- **Browsers and your tabs.** The Web browsers row ends the browser rather than asking it to close, because that's what makes it restore every tab when it reopens. Want to keep a music tab playing while you game? Leave this row off and let the browser sleep idle tabs instead: Firefox does this on its own when memory runs low, Chrome has **Memory Saver**, Edge has **Sleeping tabs**, and the free **Auto Tab Discard** extension lets you choose exactly what stays awake. A browser that a test or an agent is driving (Playwright, Puppeteer, Selenium) is closed with the rest but not reopened: it wasn't yours to bring back.
 - **What it never closes.** Windows' own processes, the game you're playing (or anything it started), game stores like Steam, Epic or Battle.net (even when an app you close started them), and VibeShift itself.
 - **Separate apps stay open.** A browser opened from a link in Claude, or an app whose row you switched off, survives even if a closed app started it.
 - **Started VibeShift from an app's terminal?** If that's an app VibeShift closes (Claude Code, an AI app's built-in terminal), VibeShift restarts itself through Windows first. Closing the app for gaming then can't take VibeShift down with it. If it can't move out (it was started with `--tray`, say), that app is left running instead, since VibeShift can't close part of it and reopen it afterwards.
@@ -147,10 +147,10 @@ If that second prompt is cancelled, or times out because you weren't at the PC w
 
 ## Privacy and permissions
 
-- VibeShift only goes online to check GitHub for updates: when you click **Check for updates**, or once a day if you turn that on. No telemetry, no accounts.
-- It runs as a normal app, without admin rights. Only Extra boost asks for admin, and only when you click.
+- VibeShift only goes online to check GitHub for updates: when you click **Check for updates**, or by itself (when it starts, then once a day) if you turn that on. No telemetry, no accounts.
+- It runs as a normal app, without admin rights. Only [Extra boost](#extra-boost) asks for admin: when you click Start gaming, and again when VibeShift switches back.
 - Its files live in `%APPDATA%\VibeShift`:
-  - `settings.json`: your choices.
+  - `settings.json`: your choices, and how to start each app VibeShift has seen running (so it can open it for you).
   - `session.json`: what to reopen. It only exists while you're in gaming mode.
   - `stats.json`: when your last 90 days of gaming sessions started and ended, and the RAM each one freed.
   - `vibeshift.log`: a short log of switches and the games VibeShift saw start and close, handy if you open an issue. **Settings → About → Open log folder** takes you there.

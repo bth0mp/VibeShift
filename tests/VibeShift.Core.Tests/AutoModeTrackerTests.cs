@@ -87,6 +87,17 @@ public class AutoModeTrackerTests
         Assert.Equal(AutoAction.None, C.Update(new[] { 7 }, Mode.Coding, t0.AddSeconds(60), askOnly: true));
     }
 
+    [Fact] // 2026-11-25 review: "asked" outlived the gaming session it led to. A game already running at the first poll
+           // back in vibe coding mode (started while the switch back reopened the apps) was never asked about.
+    public void Ask_me_asks_again_after_the_gaming_session_it_started()
+    {
+        Assert.Equal(AutoAction.Ask, T.Update(new[] { 7 }, Mode.Coding, t0, askOnly: true));
+        T.ManualSwitch(Mode.Gaming, new[] { 7 }, returnWhenGameCloses: true); // the notification was clicked
+        T.Update(new[] { 7 }, Mode.Gaming, t0.AddSeconds(3));
+        Assert.Equal(AutoAction.BackToCoding, T.Update(None, Mode.Gaming, t0.AddSeconds(20)));
+        Assert.Equal(AutoAction.Ask, T.Update(new[] { 8 }, Mode.Coding, t0.AddSeconds(30), askOnly: true));
+    }
+
     [Fact] // 2026-11 audit: the setting was only read when a switch happened, so changing it mid-session did nothing
     public void Return_setting_changed_mid_session_applies_at_once()
     {

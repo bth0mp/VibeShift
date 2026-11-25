@@ -12,6 +12,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using VibeShift.Core.Catalog;
 using VibeShift.Core.Games;
+using VibeShift.Core.Native;
 using VibeShift.Core.Processes;
 using VibeShift.Core.State;
 using VibeShift.Core.Switching;
@@ -26,6 +27,22 @@ public partial class App : Application
     private readonly AutoModeTracker tracker = new(TimeSpan.FromSeconds(10), startDelay: TimeSpan.FromSeconds(10));
     private readonly IdleReminder reminder = new(TimeSpan.FromHours(2));
     private readonly DateTime startedUtc = DateTime.UtcNow;
+    private readonly long startedTick = Environment.TickCount64;
+
+    /// <summary>
+    /// The time the countdowns and delays run on: when VibeShift started plus the uptime since (sleep included), so it
+    /// only moves forward. On the PC's own clock, setting it back an hour (by hand, or Windows correcting it after a
+    /// dual boot) held the switch back up for that hour, and setting it forward skipped Auto mode's 10 seconds.
+    /// </summary>
+    private DateTime Now => startedUtc.AddMilliseconds(Environment.TickCount64 - startedTick);
+
+    /// <summary>
+    /// When gaming mode began, on that same time, or when VibeShift started in it: games before then went unseen. A
+    /// session left from yesterday said "no game for 2 hours" 3 s after starting, even right after --gaming
+    /// (2026-11-23 live check).
+    /// </summary>
+    private DateTime gamingSince;
+
     private Dictionary<int, string> loggedGames = [];
     private Mutex? instance;
     private EventWaitHandle? showSignal;
@@ -125,7 +142,8 @@ public partial class App : Application
             using var me = Process.GetCurrentProcess();
             bool signedOut = !vm.SessionPausedServices
                              && vm.SessionStartedUtc < ProcessQuery.SignInTimeUtc(ProcessSnapshot.Take(), me.SessionId);
-            tracker.Resume(vm.SessionIsAutomatic, settings.ReturnWhenGameCloses, DateTime.UtcNow, signedOut);
+            tracker.Resume(vm.SessionIsAutomatic, settings.ReturnWhenGameCloses, Now, signedOut);
+            gamingSince = Now;
             leftoverSession = true;
             Log.Write(signedOut ? "Started in gaming mode, from before the last sign-out" : "Started in gaming mode");
         }
@@ -159,6 +177,7 @@ public partial class App : Application
             // Raised after a failed switch too (to keep the tray in step), with the mode unchanged.
             bool changed = mode != shownMode;
             shownMode = mode;
+            if (changed && mode == Mode.Gaming) gamingSince = Now;
             leftoverSession = false;
             tray.Update(mode, vm.TrayDetail);
             reminder.Reset();
@@ -167,6 +186,8 @@ public partial class App : Application
             if (!automatic) tracker.ManualSwitch(mode, vm.CurrentGamePids, vm.Settings.ReturnWhenGameCloses);
             // Auto mode's start failed: leave that game alone, or the countdown comes round again every few seconds.
             else if (!changed && mode == Mode.Coding) tracker.CancelStart(vm.CurrentGamePids);
+            // The Play button offers the game played last, which may just have changed.
+            if (changed && mode == Mode.Coding) _ = vm.LoadGamesAsync();
             // Back from gaming with the window out of sight: say what opened. Nothing ever pops up while you play.
             if (changed && mode == Mode.Coding && !window.IsVisible) tray.Notify("Back to vibe coding", vm.LastReturnMessage);
         };
@@ -195,6 +216,16 @@ public partial class App : Application
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += async (_, _) => await TickAsync();
         timer.Start();
+        // Game folders and the Play list were only read at start and when a setting changed. A game installed since
+        // (an Epic, GOG, Ubisoft or Battle.net game is a folder of its own) went unseen until VibeShift restarted: no
+        // Auto mode for it, and no switch back when it closed (2026-11-25 review).
+        var librariesTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
+        librariesTimer.Tick += (_, _) =>
+        {
+            RebuildWatcher();
+            _ = vm.LoadGamesAsync();
+        };
+        librariesTimer.Start();
         // Update check, only if the user turned it on: shortly after start, then once a day.
         var updateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         updateTimer.Tick += (_, _) =>
@@ -217,11 +248,7 @@ public partial class App : Application
         // runs, which shows its window like any plain start; a temporary .lnk could carry --tray if that ever matters
         if (Environment.GetEnvironmentVariable(JsonStore.DataDirVariable) is { Length: > 0 }
             || Environment.GetCommandLineArgs().Length > (command is null ? 1 : 2) || Environment.ProcessPath is not { } exe) return false;
-        if (Mutex.TryOpenExisting(InstanceName, out var running))
-        {
-            running.Dispose();
-            return false; // a copy is already running: this one just shows it, as usual
-        }
+        if (InstanceRunning()) return false; // a copy is already running: this one just shows it, as usual
         try
         {
             var job = ProcessQuery.MyJobPids();
@@ -231,18 +258,23 @@ public partial class App : Application
             if (!SwitchPlanner.SharesJobWithApp(job, Environment.ProcessId, apps)) return false;
             // Held during the hand-over, so the copy Explorer starts never hands over in turn.
             using var handover = new EventWaitHandle(false, EventResetMode.ManualReset, @"Local\VibeShift.Handover", out bool mine);
-            if (!mine) return false;
+            if (!mine)
+            {
+                // Another start from this job is handing over right now (an agent ran the command twice). Carrying on
+                // would race the copy Explorer is starting for the lock, and winning it means running inside the job
+                // after all, where the first start's command then lands. Wait for that copy, then signal it like any
+                // second start (2026-11-25 review).
+                for (int i = 0; i < 50 && !InstanceRunning(); i++) Thread.Sleep(200);
+                return false;
+            }
             Process.Start(new ProcessStartInfo(ReopenTarget.Explorer, $"\"{exe}\"") { UseShellExecute = false })?.Dispose();
             // Explorer always "succeeds": leave only once the new copy has taken the lock.
             for (int i = 0; i < 50; i++)
             {
                 Thread.Sleep(200);
-                if (Mutex.TryOpenExisting(InstanceName, out var started))
-                {
-                    started.Dispose();
-                    if (command is not null) SignalWhenReady("Cmd" + command);
-                    return true;
-                }
+                if (!InstanceRunning()) continue;
+                if (command is not null) SignalWhenReady("Cmd" + command);
+                return true;
             }
         }
         catch (Exception)
@@ -250,6 +282,14 @@ public partial class App : Application
             // a failed check must never stop VibeShift starting: carry on here, as before
         }
         return false;
+    }
+
+    /// <summary>A copy without its own data folder holds the single-instance lock.</summary>
+    private static bool InstanceRunning()
+    {
+        if (!Mutex.TryOpenExisting(InstanceName, out var running)) return false;
+        running.Dispose();
+        return true;
     }
 
     private static string SignalName(string name, string scope) => $@"Local\VibeShift.{name.Replace("--", ".")}{scope}";
@@ -314,14 +354,25 @@ public partial class App : Application
             vm.HotkeyStatus = "";
             return;
         }
-        var taken = hotkeys.Register(
+        (char Key, string Label, Action Run)[] keys =
         [
             ('G', "Ctrl+Alt+G", () => _ = vm.ToggleModeAsync(automatic: false)),
             ('V', "Ctrl+Alt+V", () => _ = vm.OpenAllAsync()),
             ('P', "Ctrl+Alt+P", () => _ = vm.PlayAsync()),
-        ]);
-        vm.HotkeyStatus = taken.Count == 0 ? "" : $"{string.Join(" and ", taken)} {(taken.Count == 1 ? "is" : "are")} already used by another app.";
-        if (taken.Count > 0) Log.Write("Hotkeys: " + vm.HotkeyStatus);
+        ];
+        // Ctrl+Alt is AltGr. A shortcut on a key this keyboard types with (AltGr+V is @ on a Hungarian one, AltGr+G is ])
+        // would swallow the character and act instead, so those keys stay with the keyboard.
+        // ponytail: looked up at start and when a setting changes; a keyboard layout added later counts from then on
+        var typed = keys.Select(k => (k.Label, Types: Keyboard.AltGrTypes(k.Key))).Where(k => k.Types is not null).ToList();
+        var taken = hotkeys.Register(keys.Where(k => typed.All(t => t.Label != k.Label)).ToList());
+        var notes = new List<string>();
+        if (taken.Count > 0) notes.Add($"{string.Join(" and ", taken)} {(taken.Count == 1 ? "is" : "are")} already used by another app.");
+        if (typed.Count > 0)
+            notes.Add($"{string.Join(" and ", typed.Select(t => t.Label))} {(typed.Count == 1 ? "is" : "are")} off: on your keyboard " +
+                      $"{(typed.Count == 1 ? "it types" : "they type")} {string.Join(" and ", typed.Select(t => t.Types))}.");
+        string status = string.Join(" ", notes);
+        if (status.Length > 0 && status != vm.HotkeyStatus) Log.Write("Hotkeys: " + status); // every settings save lands here
+        vm.HotkeyStatus = status;
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -353,7 +404,9 @@ public partial class App : Application
             // list into a fresh Start gaming would close them too
             if (leftoverSession && vm.Mode == Mode.Gaming)
             {
-                tracker.ManualSwitch(Mode.Gaming, vm.CurrentGamePids, vm.Settings.ReturnWhenGameCloses);
+                // A session Auto mode started still switches back whatever the setting says: with the setting off, the
+                // command left one in gaming mode for good (2026-11-25 review).
+                tracker.ManualSwitch(Mode.Gaming, vm.CurrentGamePids, vm.Settings.ReturnWhenGameCloses || vm.SessionIsAutomatic);
                 Log.Write("Gaming mode from before this start: now waiting for a game, as asked");
             }
             leftoverSession = false;
@@ -376,7 +429,11 @@ public partial class App : Application
             // launcher may have handed over to the real exe since.)
             if (vm!.Mode == Mode.Coding && vm.FindGames?.Invoke().Count > 0) _ = vm.SwitchToAsync(Mode.Gaming);
             else ShowWindow();
-        });
+        },
+        // The notification centre is where Windows puts this while the game is full screen, so the click usually comes
+        // minutes later. With the usual 30 s limit it then only opened the window (2026-11-25 review); the check
+        // above is what keeps a late click from surprising anyone.
+        clickExpires: false);
     }
 
     /// <summary>Refreshes the visible window and runs Auto mode and Ask me. Does nothing while hidden with both off.</summary>
@@ -406,7 +463,7 @@ public partial class App : Application
                 LogGames(games);
                 vm.SetPlaying(gaming ? found.Where(g => g.Path is not null).Select(g => (GameRules.DisplayName(g.Path!, vm.GameRoots), g.Path!)).ToList() : []);
                 // Automatic switches never show or activate the window; only the tray tooltip changes.
-                var action = tracker.Update(vm.CurrentGamePids, vm.Mode, DateTime.UtcNow, autoStart: s.AutoMode || ask, canSwitch: vm.CanVibeAct,
+                var action = tracker.Update(vm.CurrentGamePids, vm.Mode, Now, autoStart: s.AutoMode || ask, canSwitch: vm.CanVibeAct,
                     alive: alive, askOnly: ask);
                 if (action == AutoAction.StartSoon)
                     AnnounceAutoStart(found.FirstOrDefault(g => g.Path is not null).Path, vm.CurrentGamePids);
@@ -414,10 +471,7 @@ public partial class App : Application
                     AskToStart(found.FirstOrDefault(g => g.Path is not null).Path);
                 else if (action != AutoAction.None)
                     await vm.ToggleModeAsync(automatic: true);
-                // Counted from this start at the earliest: games before it went unseen. A session left from yesterday
-                // said "no game for 2 hours" 3 s after starting, even right after --gaming (2026-11-23 live check).
-                else if (gaming && vm.SessionStartedUtc is { } since
-                         && reminder.Due(games.Count > 0, AcceptsNotifications(), since > startedUtc ? since : startedUtc, DateTime.UtcNow))
+                else if (gaming && reminder.Due(games.Count > 0, AcceptsNotifications(), gamingSince, Now))
                 {
                     Log.Write("Reminded: still in gaming mode, no game for 2 hours");
                     tray?.Notify("Still in gaming mode", "No game has run for 2 hours. Click here, then Back to vibe coding to reopen your apps.");

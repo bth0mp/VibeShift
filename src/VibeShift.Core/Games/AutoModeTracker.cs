@@ -66,6 +66,9 @@ public sealed class AutoModeTracker(TimeSpan backDelay, TimeSpan startDelay = de
             return fresh && startDelay > TimeSpan.Zero ? AutoAction.StartSoon : AutoAction.None;
         }
 
+        // Whatever "Ask me" asked about belongs to before this gaming session. Left set, a game already running at the
+        // first poll back in vibe coding mode (started while the switch back ran) was never asked about (2026-11-25 review).
+        asked = false;
         if (!returnArmed) return AutoAction.None;
         if (gamePids.Count > 0)
         {

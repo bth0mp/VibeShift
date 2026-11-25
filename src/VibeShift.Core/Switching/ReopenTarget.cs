@@ -28,7 +28,8 @@ public static partial class ReopenTarget
     /// <summary>
     /// Packaged (Store/MSIX) apps can't be started from their WindowsApps exe path, so they go through the
     /// shell by AppUserModelID. Everything else starts from its recorded exe; if VibeShift itself runs
-    /// elevated, that also goes through the shell so the app doesn't inherit admin rights.
+    /// elevated, that also goes through the shell so the app doesn't inherit admin rights. The same when VibeShift
+    /// runs inside a job, which a directly started app would inherit and end with.
     /// </summary>
     public static ProcessStartInfo ToStartInfo(ClosedApp app, bool elevated = false)
     {

@@ -86,8 +86,8 @@ function Write-Settings($extra = @{}) {
     foreach ($k in $extra.Keys) { $s[$k] = $extra[$k] }
     $s | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $dir 'settings.json') -Encoding UTF8
 }
-function Write-Session($startedUtc) {
-    [ordered]@{ StartedUtc = $startedUtc.ToString('o'); Automatic = $false
+function Write-Session($startedUtc, [switch]$Automatic) {
+    [ordered]@{ StartedUtc = $startedUtc.ToString('o'); Automatic = [bool]$Automatic
                 Closed = @([ordered]@{ EntryId = 'test-charmap'; Name = 'Character Map'; ExePath = $charmap; Aumid = $null })
                 ClosedEntryIds = @('test-charmap') } | ConvertTo-Json -Depth 5 | Set-Content $session -Encoding UTF8
 }
@@ -123,7 +123,9 @@ try {
     Click (TrayMenu $vs 'Quit')
     Click (Find $vs.Id 'Reopen and quit')
     $exited = $vs.WaitForExit(20000)
-    Check 'Reopen and quit: Character Map reopened, session cleared, exited' ($exited -and (Get-Process charmap -ErrorAction SilentlyContinue) -and -not (Test-Path $session))
+    # Started from a terminal that sits in a job (an AI app's), the copy reopens apps through Explorer, which starts
+    # them a moment after VibeShift has gone: wait for it.
+    Check 'Reopen and quit: Character Map reopened, session cleared, exited' ($exited -and (Wait-Until 10 { Get-Process charmap -ErrorAction SilentlyContinue }) -and -not (Test-Path $session))
     Close-Charmap
     Write-Session ([DateTime]::UtcNow)
     $vs = Start-Copy
@@ -191,9 +193,20 @@ try {
     Start-Sleep 20
     Check '...but started with --gaming, it stays in gaming mode and waits for a game, without the 2-hour reminder' ((Test-Path $session) -and (Logged 'now waiting for a game, as asked') -and -not (Logged 'Reminded') -and -not (Get-Process charmap -ErrorAction SilentlyContinue))
     Stop-Copy $vs
+    # A session Auto mode started switches back whatever "Switch back when my game closes" says, also after --gaming.
+    Reset; Write-Settings @{ MyGames = @($charmap) }
+    Write-Session ([DateTime]::new(2000, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)) -Automatic
+    $vs = Start-Copy @('--gaming')
+    Start-Process $charmap
+    Check 'an Auto mode session, with the setting off: --gaming waits for the game' ((Wait-Until 20 { Logged 'Game running: charmap' }) -and (Test-Path $session))
+    Close-Charmap
+    Check '...and still switches back once it closes, reopening what it closed' ((Wait-Until 40 { -not (Test-Path $session) }) -and (Wait-Until 10 { Get-Process charmap -ErrorAction SilentlyContinue }))
+    Stop-Copy $vs
+    Close-Charmap
 }
 finally {
     Stop-Copy $vs
+    Start-Sleep 2 # a Character Map that Explorer is still starting for a copy that has just gone
     Close-Charmap
     if ($failed.Count -gt 0 -and (Test-Path $log)) { ''; 'log of the last test:'; Get-Content $log }
     Start-Sleep 1

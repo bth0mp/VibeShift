@@ -32,6 +32,15 @@ internal static class Win32
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     internal static extern int GetApplicationUserModelId(SafeProcessHandle process, ref int length, [Out] char[]? buffer);
 
+    [DllImport("user32.dll")]
+    internal static extern int GetKeyboardLayoutList(int count, [Out] IntPtr[]? layouts);
+
+    [DllImport("user32.dll")]
+    internal static extern uint MapVirtualKeyEx(uint code, uint mapType, IntPtr layout);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int ToUnicodeEx(uint virtualKey, uint scanCode, byte[] keyState, [Out] char[] buffer, int size, uint flags, IntPtr layout);
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct MEMORYSTATUSEX
     {

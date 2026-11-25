@@ -79,6 +79,22 @@ public class SwitchPlannerTests
         Assert.Contains(Plan(all, selfPid: 300).Close, c => c.Entry.Id == "claude-desktop"); // no job: closes as usual
     }
 
+    [Fact] // 2026-11-25 review: what VibeShift starts itself (an app it reopened) joins its job too, and from then on
+           // counted as "an app sharing VibeShift's job": closed once, reopened, never closed again
+    public void An_app_VibeShift_started_inside_its_job_closes_as_usual()
+    {
+        // Claude Code's terminal started VibeShift (--tray, so no hand-over). VibeShift has since reopened Cursor and
+        // ChatGPT; ChatGPT's launcher stub has exited, so nothing but its start time says VibeShift started it.
+        var all = new[]
+        {
+            P(5, 0, "claude"), P(6, 5, "claude"), P(300, 555, "VibeShift", ct: 10), P(20, 300, "Cursor", ct: 20), P(30, 999, "ChatGPT", ct: 21),
+        };
+        paths[5] = Desk;
+        paths[6] = Cli;
+        var plan = Plan(all, selfPid: 300, job: [6, 300, 20, 30]);
+        Assert.Equal(new[] { "chatgpt", "cursor" }, plan.Close.Select(c => c.Entry.Id).OrderBy(id => id)); // and still not Claude
+    }
+
     [Fact]
     public void A_background_only_browser_and_its_helpers_are_not_the_browser_open_again()
     {
@@ -88,6 +104,9 @@ public class SwitchPlannerTests
         cmds[3] = "chrome.exe --no-startup-window";
         var hidden = SwitchPlanner.BackgroundOnlyTrees(all, ["msedge", "chrome"], pid => cmds.GetValueOrDefault(pid), pid => pid == 3);
         Assert.Equal(new[] { 1, 2 }, hidden.OrderBy(x => x)); // Chrome has a window: it really is open
+        cmds[3] = "chrome.exe --enable-automation --remote-debugging-pipe"; // ...unless a test is driving it: not the user's Chrome
+        hidden = SwitchPlanner.BackgroundOnlyTrees(all, ["msedge", "chrome"], pid => cmds.GetValueOrDefault(pid), pid => pid == 3);
+        Assert.Equal(new[] { 1, 2, 3, 4 }, hidden.OrderBy(x => x));
     }
 
     [Fact] // audit A3: Steam started from Claude (or a steam:// link), minimised to the tray, with the game under it
@@ -278,6 +297,12 @@ public class SwitchPlannerTests
     [InlineData("\"msedge.exe\" --no-startup-window --win-session-start", true, false)]  // the user's browser: reopen it
     [InlineData("\"msedge.exe\" --profile-directory=Default", false, false)]
     [InlineData(null, false, false)]
+    // 2026-11-25 review: a browser a test or an agent drives isn't the user's, window or not. Reopened by its exe, it
+    // came back as an empty Chromium from Playwright's cache.
+    [InlineData(@"""C:\Users\u\AppData\Local\ms-playwright\chromium-1140\chrome-win\chrome.exe"" --enable-automation --remote-debugging-pipe", true, true)]
+    [InlineData("\"chrome.exe\" --headless=new --disable-gpu", false, true)]
+    [InlineData("\"firefox.exe\" -marionette -profile C:\\Temp\\rust_mozprofile", true, true)]
+    [InlineData("\"chrome.exe\" --user-data-dir=C:\\profiles\\not--headless-at-all", true, false)]
     public void A_browser_is_background_only_when_started_that_way_and_still_windowless(string? cmd, bool window, bool expected) =>
         Assert.Equal(expected, SwitchPlanner.IsBackgroundOnly(cmd, window));
 

@@ -126,10 +126,14 @@ public static partial class GameLibraries
                 roots.Add(Path.Combine(d.Name, "XboxGames"));
             }
         });
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string[] system =
         [
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
             Environment.GetFolderPath(Environment.SpecialFolder.Windows), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            // Where per-user apps live (Cursor, VS Code, Discord, Claude) and where launchers keep their records.
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), localAppData,
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), localAppData.Length > 0 ? Path.Combine(localAppData, "Programs") : "",
         ];
         return roots.Select(NormalizeDir).Where(r => !IsTooBroad(r, system) && Directory.Exists(r))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -141,13 +145,15 @@ public static partial class GameLibraries
     /// <summary>
     /// A "library" that is a whole drive, Program Files, Windows or the user's profile (a damaged launcher record)
     /// would make every windowed app in it a game, and Auto mode would close the user's apps for all of them.
+    /// So would a folder above one of those: C:\Users holds the profile, and with it every per-user app
+    /// (2026-11-25 review).
     /// </summary>
     public static bool IsTooBroad(string root, IReadOnlyList<string> systemDirs)
     {
         root = NormalizeDir(root);
         return root.Length == 0
                || string.Equals(Path.GetPathRoot(root + @"\")?.TrimEnd('\\'), root, StringComparison.OrdinalIgnoreCase)
-               || systemDirs.Any(d => d.Length > 0 && string.Equals(NormalizeDir(d), root, StringComparison.OrdinalIgnoreCase));
+               || systemDirs.Any(d => d.Length > 0 && (NormalizeDir(d) + @"\").StartsWith(root + @"\", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

@@ -91,7 +91,13 @@ public static class SwitchPlanner
         // Sharing a job with an app (started from its terminal, which has since exited, so the chain above is broken):
         // that job's processes, and whatever started them (the app holding the job), stay. Closing them would end the
         // job and VibeShift with it, mid-switch (2026-11-23 review). Empty when started from Explorer: no job.
-        var jobAndOwners = (jobPids ?? []).Where(pid => pid != selfPid).SelectMany(pid => ProcessTree.Ancestors(all, pid)).ToHashSet();
+        // Only what was there before VibeShift, though. What VibeShift starts itself (an app it reopened) joins the job
+        // too, and counted as "an app sharing the job" it was closed once, reopened, and never closed again
+        // (2026-11-25 review). By start time, not by parent: a launcher stub that has exited leaves no parent to follow.
+        var inJob = (jobPids ?? []).ToHashSet();
+        long selfStarted = all.FirstOrDefault(p => p.Pid == selfPid)?.CreateTime ?? long.MaxValue;
+        var jobAndOwners = all.Where(p => p.Pid != selfPid && inJob.Contains(p.Pid) && p.CreateTime <= selfStarted)
+            .SelectMany(p => ProcessTree.Ancestors(all, p.Pid)).ToHashSet();
         // An app whose row is off, or that's opened for gaming, survives even when a switched-on app started it.
         bool Closes(CatalogEntry e) => s.IsOn(e) && !s.GameApps.Contains(e.Id);
         var offRoots = detected.Where(d => !Closes(d.Entry)).SelectMany(d => d.Roots).Select(r => r.Pid).ToHashSet();
@@ -216,22 +222,36 @@ public static class SwitchPlanner
     }
 
     /// <summary>
-    /// A browser Windows started in the background (Edge's startup boost) and that still has no window: there is
-    /// nothing to bring back. The flag alone isn't enough: that same process keeps it once it hosts the user's windows.
+    /// A browser with nothing of the user's to bring back. Either Windows started it in the background (Edge's startup
+    /// boost) and it still has no window: the flag alone isn't enough, since that same process keeps it once it hosts
+    /// the user's windows. Or a test or an agent is driving it (see <see cref="IsAutomated"/>).
     /// </summary>
     public static bool IsBackgroundOnly(string? commandLine, bool hasVisibleWindow) =>
-        !hasVisibleWindow && commandLine?.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase) == true;
+        commandLine is not null && (IsAutomated(commandLine) || (!hasVisibleWindow && StartedInBackground(commandLine)));
+
+    private static bool StartedInBackground(string commandLine) => commandLine.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase);
+
+    // As whole arguments: "--headless" inside a profile folder's name says nothing.
+    private static readonly System.Text.RegularExpressions.Regex AutomationFlag = new(
+        @"\s--?(enable-automation|headless|marionette|juggler-pipe)(=|\s|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// A browser driven by a test or an agent (Playwright, Puppeteer, Selenium, a browser MCP server), headless or not.
+    /// It isn't the user's browser: reopened by its exe after gaming, it came back as an empty Chromium window from the
+    /// test cache, and that exe was remembered as how to open "Web browsers" (2026-11-25 review).
+    /// </summary>
+    public static bool IsAutomated(string? commandLine) => commandLine is not null && AutomationFlag.IsMatch(commandLine);
 
     /// <summary>
     /// Background-only browsers (see <see cref="IsBackgroundOnly"/>) and everything under them. Running, but with nothing
-    /// to see, so they don't count as the browser being open again: after a restart, Edge's startup boost meant the Edge
-    /// closed for gaming never came back (2026-11-23 review).
+    /// of the user's to see, so they don't count as the browser being open again: after a restart, Edge's startup boost
+    /// meant the Edge closed for gaming never came back (2026-11-23 review).
     /// </summary>
     public static IReadOnlySet<int> BackgroundOnlyTrees(
         IReadOnlyList<ProcInfo> all, IReadOnlyCollection<string> names, Func<int, string?> commandLine, Func<int, bool> hasVisibleWindow) =>
-        all.Where(p => names.Contains(p.Name, StringComparer.OrdinalIgnoreCase)
-                       && commandLine(p.Pid) is { } cmd && cmd.Contains("--no-startup-window", StringComparison.OrdinalIgnoreCase)
-                       && IsBackgroundOnly(cmd, hasVisibleWindow(p.Pid)))
+        // Windows are only looked up for the few processes with the flag: a browser is dozens of processes.
+        all.Where(p => names.Contains(p.Name, StringComparer.OrdinalIgnoreCase) && commandLine(p.Pid) is { } cmd
+                       && (IsAutomated(cmd) || (StartedInBackground(cmd) && !hasVisibleWindow(p.Pid))))
             .SelectMany(p => ProcessTree.Descendants(all, p.Pid))
             .Select(p => p.Pid)
             .ToHashSet();

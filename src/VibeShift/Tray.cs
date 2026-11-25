@@ -97,13 +97,13 @@ public sealed class Tray : IDisposable
         {
             if (e.Button == MouseButtons.Left) open();
         };
-        // A click doesn't say which notification it was: only the newest has an action, and only while it's fresh.
-        // Later clicks (from the notification centre, on any older one) just open VibeShift.
-        icon.BalloonTipClicked += (_, _) => ((DateTime.UtcNow <= balloonClickUntil ? balloonClick : null) ?? open)();
+        // A click doesn't say which notification it was: only the newest has an action, and (unless it asked to keep
+        // it) only while it's fresh. Later clicks (from the notification centre, on any older one) just open VibeShift.
+        icon.BalloonTipClicked += (_, _) => ((Environment.TickCount64 <= balloonClickUntil ? balloonClick : null) ?? open)();
     }
 
     private Action? balloonClick;
-    private DateTime balloonClickUntil;
+    private long balloonClickUntil; // uptime (Environment.TickCount64), so a changed clock neither ends nor extends it
 
     /// <param name="detail">A second tooltip line while gaming: "Playing Deadlock · freed 2.4 GB".</param>
     public void Update(Mode mode, string detail = "")
@@ -119,10 +119,15 @@ public sealed class Tray : IDisposable
     /// A Windows notification, e.g. "Back to vibe coding: opened Claude, ChatGPT". A click opens VibeShift, or runs
     /// <paramref name="onClick"/> (Auto mode's "keep my apps open"). Windows holds these back while a game runs full screen.
     /// </summary>
-    public void Notify(string title, string text, Action? onClick = null)
+    /// <param name="clickExpires">
+    /// False keeps <paramref name="onClick"/> until the next notification replaces it: for a question that is still
+    /// worth answering from the notification centre, where a full-screen game sends it. The action then has to check
+    /// for itself that it still applies.
+    /// </param>
+    public void Notify(string title, string text, Action? onClick = null, bool clickExpires = true)
     {
         balloonClick = onClick;
-        balloonClickUntil = DateTime.UtcNow.AddSeconds(30);
+        balloonClickUntil = clickExpires ? Environment.TickCount64 + 30_000 : long.MaxValue;
         icon.ShowBalloonTip(5000, title, text, ToolTipIcon.None);
     }
 

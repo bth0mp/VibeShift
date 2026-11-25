@@ -236,11 +236,15 @@ public sealed class Switcher(JsonStore store)
         var viaShell = new List<ClosedApp>();
         var known = Entries(s).Select(e => e.Id).ToHashSet();
         if (toOpen.Count > 0) progress?.Report($"Reopening {toOpen.Count} app{(toOpen.Count == 1 ? "" : "s")}...");
+        // Inside a job (started by Task Scheduler, or with --tray from an AI app's terminal), an app started directly
+        // would join that job and end with it: when the task is stopped, or that AI app closes. Explorer starts it
+        // outside, the way it keeps an elevated VibeShift's admin rights out of the apps it reopens.
+        bool viaExplorer = Environment.IsPrivilegedProcess || ProcessQuery.MyJobPids().Count > 0;
         foreach (var app in toOpen)
         {
             try
             {
-                var start = ReopenTarget.ToStartInfo(app, elevated: Environment.IsPrivilegedProcess);
+                var start = ReopenTarget.ToStartInfo(app, viaExplorer);
                 using var _ = Process.Start(start);
                 // A direct start throws when it fails; one handed to the shell always "succeeds", so check those.
                 // (An app whose row was removed while gaming can't be recognised, so it isn't checked.)
@@ -253,13 +257,14 @@ public sealed class Switcher(JsonStore store)
             }
         }
 
-        // Confirm each shell launch actually produced the app.
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        // Confirm each shell launch actually produced the app. Timed by uptime, not the clock: with the clock set back
+        // mid-switch, a wait like this one ran on until the clock caught up, the switch never finishing.
+        long deadline = Environment.TickCount64 + 10_000;
         var missing = viaShell;
         while (missing.Count > 0)
         {
             missing = SwitchPlanner.PlanReopen(new SessionState { Closed = missing.ToList() }, Running(s)).ToList();
-            if (missing.Count == 0 || DateTime.UtcNow >= deadline) break;
+            if (missing.Count == 0 || Environment.TickCount64 >= deadline) break;
             Thread.Sleep(500);
         }
         foreach (var app in missing)
@@ -283,11 +288,11 @@ public sealed class Switcher(JsonStore store)
         }
         // An app that answered by hiding its window to the tray (still running, no window after a second)
         // isn't going to close; stop waiting for it.
-        var started = DateTime.UtcNow;
-        var deadline = started.AddSeconds(seconds);
+        long started = Environment.TickCount64;
+        long deadline = started + seconds * 1000L;
         bool StillClosing(Process p) =>
-            !HasExited(p) && (DateTime.UtcNow - started < TimeSpan.FromSeconds(1) || ProcessQuery.HasVisibleWindow(p.Id));
-        while (DateTime.UtcNow < deadline && closing.Any(StillClosing)) Thread.Sleep(250);
+            !HasExited(p) && (Environment.TickCount64 - started < 1000 || ProcessQuery.HasVisibleWindow(p.Id));
+        while (Environment.TickCount64 < deadline && closing.Any(StillClosing)) Thread.Sleep(250);
         foreach (var p in procs) p.Dispose();
     }
 
