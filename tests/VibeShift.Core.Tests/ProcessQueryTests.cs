@@ -37,9 +37,10 @@ public class ProcessQueryTests
     public void A_process_without_windows_is_not_asking()
     {
         Assert.Empty(AppWindows.Of(Environment.ProcessId));
-        Assert.False(AppWindows.AskToClose(Environment.ProcessId));
         Assert.False(AppWindows.Responds(Environment.ProcessId));
+        // Asking is only tried on a process that doesn't exist: this one may own the console the tests run in.
         Assert.Empty(AppWindows.Of(0x7FFFFFF0));
+        Assert.False(AppWindows.AskToClose(0x7FFFFFF0));
         Assert.False(AppWindows.Responds(0x7FFFFFF0));
     }
 
