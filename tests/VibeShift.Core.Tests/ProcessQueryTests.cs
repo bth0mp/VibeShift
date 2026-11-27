@@ -33,6 +33,16 @@ public class ProcessQueryTests
         Assert.Null(ProcessQuery.GetCommandLine(0x7FFFFFF0));
     }
 
+    [Fact] // a process with no window, and one that's gone: nothing to ask, and nothing asking (the rest is a live check)
+    public void A_process_without_windows_is_not_asking()
+    {
+        Assert.Empty(AppWindows.Of(Environment.ProcessId));
+        Assert.False(AppWindows.AskToClose(Environment.ProcessId));
+        Assert.False(AppWindows.Responds(Environment.ProcessId));
+        Assert.Empty(AppWindows.Of(0x7FFFFFF0));
+        Assert.False(AppWindows.Responds(0x7FFFFFF0));
+    }
+
     [Fact]
     public void Ram_is_sane() => Assert.InRange(ProcessQuery.AvailableRamBytes(), 1, ProcessQuery.TotalRamBytes());
 

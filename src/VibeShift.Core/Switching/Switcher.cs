@@ -55,9 +55,10 @@ public sealed class Switcher(JsonStore store)
         Task.Run<IReadOnlyList<string>>(() =>
         {
             var (all, plan) = PlanClosing(s.ForClosing(ids), automatic: false, gamePids);
-            CloseNow(all, plan, s.ForceCloseSeconds);
-            var names = plan.Close.Select(t => t.Entry.Name).ToList();
+            var (_, leftOpen) = CloseNow(all, plan, s.ForceCloseSeconds, s.KeepAppsThatAsk);
+            var names = plan.Close.Select(t => t.Entry).Except(leftOpen).Select(e => e.Name).ToList();
             Log.Write($"Vibe page: closed [{string.Join(", ", names)}]");
+            LogLeftOpen(leftOpen);
             return names;
         });
 
@@ -95,16 +96,26 @@ public sealed class Switcher(JsonStore store)
         return (all, plan);
     }
 
-    /// <summary>Asks politely (where allowed), then ends what's left, parents first. Returns what was targeted.</summary>
-    private static List<ProcInfo> CloseNow(IReadOnlyList<ProcInfo> all, GamingPlan plan, int politeSeconds)
+    /// <summary>
+    /// Asks politely (where allowed), then ends what's left, parents first. An app that answered with a question is
+    /// left open, with everything under it (when <paramref name="keepAsking"/>). Returns what was targeted, and the
+    /// rows left open.
+    /// </summary>
+    private static (List<ProcInfo> Targets, IReadOnlyList<CatalogEntry> LeftOpen) CloseNow(
+        IReadOnlyList<ProcInfo> all, GamingPlan plan, int politeSeconds, bool keepAsking)
     {
+        if (plan.Close.Count == 0) return ([], []);
+        IReadOnlyCollection<int> asking = plan.PoliteCloseRoots.Count > 0 ? PoliteClose(plan.PoliteCloseRoots, politeSeconds, keepAsking) : [];
         var byPid = new Dictionary<int, ProcInfo>();
         foreach (var p in all) byPid.TryAdd(p.Pid, p);
-        var targets = SwitchPlanner.KillOrder(all, plan).Where(byPid.ContainsKey).Select(pid => byPid[pid]).ToList();
-        if (plan.Close.Count == 0) return targets;
-        if (plan.PoliteCloseRoots.Count > 0) PoliteClose(plan.PoliteCloseRoots, politeSeconds);
+        var targets = SwitchPlanner.KillOrder(all, plan, asking).Where(byPid.ContainsKey).Select(pid => byPid[pid]).ToList();
         foreach (var info in targets) Kill(info);
-        return targets;
+        return (targets, SwitchPlanner.LeftOpen(plan, asking));
+    }
+
+    private static void LogLeftOpen(IReadOnlyList<CatalogEntry> leftOpen)
+    {
+        if (leftOpen.Count > 0) Log.Write($"Left open (asked a question): [{string.Join(", ", leftOpen.Select(e => e.Name))}]");
     }
 
     private static IReadOnlyList<Detected> Running(Settings s)
@@ -150,7 +161,10 @@ public sealed class Switcher(JsonStore store)
             int n = plan.Close.Count;
             progress?.Report($"Closing {n} app{(n == 1 ? "" : "s")}...");
         }
-        var targets = CloseNow(all, plan, s.ForceCloseSeconds);
+        var (targets, leftOpen) = CloseNow(all, plan, s.ForceCloseSeconds, s.KeepAppsThatAsk);
+        // Still on the reopen list: answered and closed while gaming, the app comes back with the rest.
+        session.LeftOpen.AddRange(leftOpen.Select(e => e.Id));
+        LogLeftOpen(leftOpen);
 
         if (plan.ShutdownWsl)
         {
@@ -178,7 +192,7 @@ public sealed class Switcher(JsonStore store)
         session.AvailAfter = ProcessQuery.AvailableRamBytes();
         session.KilledBytes = targets.Where(IsGone).Sum(p => p.PrivateBytes);
         Step("save session", () => store.SaveSession(session));
-        Log.Write($"Gaming mode ({(automatic ? "auto" : "manual")}): closed [{string.Join(", ", session.ClosedEntryIds)}], " +
+        Log.Write($"Gaming mode ({(automatic ? "auto" : "manual")}): closed [{string.Join(", ", session.ClosedEntryIds.Except(session.LeftOpen))}], " +
                   $"services [{string.Join(", ", session.StoppedServices)}], freed {Format.Bytes(session.Freed)}");
 
         // Game-time apps (Discord, OBS...) open after the RAM was measured, so FREED shows what closing gained.
@@ -275,15 +289,20 @@ public sealed class Switcher(JsonStore store)
         return new ReopenResult(toOpen.Select(a => a.Name).Where(n => !failed.Contains(n)).Distinct().ToList(), failed);
     }
 
-    private static void PoliteClose(IEnumerable<ProcInfo> roots, int seconds)
+    /// <summary>
+    /// Asks each app to close and gives them <paramref name="seconds"/>. Returns the roots that asked a question
+    /// instead (when <paramref name="keepAsking"/>): the caller leaves those open.
+    /// </summary>
+    private static IReadOnlyCollection<int> PoliteClose(IEnumerable<ProcInfo> roots, int seconds, bool keepAsking)
     {
         var procs = roots.Select(Open).OfType<Process>().ToList();
-        // Only wait for apps that took the close request; ones that hide to the tray get force-closed straight away.
+        // Only wait for apps that took the close request; ones with no window to ask get force-closed straight away.
         var closing = new List<Process>();
         foreach (var p in procs)
         {
             bool accepted = false;
-            Step($"close {p.ProcessName}", () => accepted = p.CloseMainWindow());
+            // Every window, not just the main one: a second window still open would read as "it's asking" below.
+            Step($"close {p.ProcessName}", () => accepted = AppWindows.AskToClose(p.Id));
             if (accepted) closing.Add(p);
         }
         // An app that answered by hiding its window to the tray (still running, no window after a second)
@@ -293,7 +312,13 @@ public sealed class Switcher(JsonStore store)
         bool StillClosing(Process p) =>
             !HasExited(p) && (Environment.TickCount64 - started < 1000 || ProcessQuery.HasVisibleWindow(p.Id));
         while (Environment.TickCount64 < deadline && closing.Any(StillClosing)) Thread.Sleep(250);
+        // Asked to close, still running, still showing a window that answers: it didn't hide to the tray and it isn't
+        // frozen. It put up a question ("Save changes?"), or it's busy saving. Ending it here is how unsaved work was
+        // lost, so it stays, and the user is told.
+        // ponytail: an app that minimizes instead of closing reads as asking too; the setting is the way out.
+        var asking = keepAsking ? closing.Where(p => !HasExited(p) && AppWindows.Responds(p.Id)).Select(p => p.Id).ToList() : [];
         foreach (var p in procs) p.Dispose();
+        return asking;
     }
 
     /// <summary>Kills only if the PID still belongs to the process in the snapshot (PIDs get reused).</summary>

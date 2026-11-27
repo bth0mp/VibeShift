@@ -41,6 +41,31 @@ internal static class Win32
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern int ToUnicodeEx(uint virtualKey, uint scanCode, byte[] keyState, [Out] char[] buffer, int size, uint flags, IntPtr layout);
 
+    internal const int GW_OWNER = 4;
+    internal const uint WM_NULL = 0x0000;
+    internal const uint WM_CLOSE = 0x0010;
+    internal const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    internal delegate bool EnumWindowsProc(IntPtr window, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    internal static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(IntPtr window, out int processId);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetWindow(IntPtr window, int relation);
+
+    [DllImport("user32.dll", EntryPoint = "PostMessageW")]
+    internal static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW")]
+    internal static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct MEMORYSTATUSEX
     {
