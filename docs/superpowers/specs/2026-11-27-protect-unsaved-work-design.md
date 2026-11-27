@@ -50,11 +50,16 @@ The owner chose that Auto mode asks apps to close as well (2026-11-27). The rest
 
 Auto mode does the same. Its switch can take up to "Force-close after" seconds longer when an app asks.
 
+Two things found while building it (2026-11-27):
+
+- **Cloaked windows don't count.** PowerToys' Command Palette keeps a window that Windows calls visible but the app itself has cloaked. It would have read as asking. A window the app has cloaked is treated like one hidden to the tray; a window on another virtual desktop (cloaked by Windows) still counts.
+- **The window in use stays in front.** Windows stops a background app taking the foreground while the PC is in use, but not once it has been idle for a few minutes (a game left loading). The first live run showed the stand-in's question coming to the front. While it waits, VibeShift now puts back the window that was in front if an asked app takes its place. It does not do this when VibeShift's own window was in front: Start gaming was just clicked there.
+
 **Setting.** Settings, Closing apps: "Leave an app open when it asks a question", on by default (`Settings.KeepAppsThatAsk`). Off restores today's behaviour exactly, including Auto mode closing apps right away.
 
 **Telling the user.**
 - Log: `Left open (asked a question): [Visual Studio]`.
-- Home, while in gaming mode and the app is still running: "Still open: Visual Studio. It asked a question instead of closing."
+- Home, while in gaming mode and the app is still running: "Still open: Visual Studio. It asked a question instead of closing." Its row is tagged "asked a question".
 - A Windows notification when the window is out of sight (shortcut, command line, Auto mode). Windows holds it back while a game is full screen, like the 10-second notice.
 - Vibe page: the app's switch goes back to on.
 
@@ -70,5 +75,5 @@ Auto mode does the same. Its switch can take up to "Force-close after" seconds l
 ## Left to the builder
 
 - Where the window code lives and how the stand-in app is built.
-- Whether a click on Start gaming should let the app's question come to the front (`AllowSetForegroundWindow`), decided by what the live check shows.
+- Whether a click on Start gaming should let the app's question come to the front (`AllowSetForegroundWindow`). Not built: the Home line and the taskbar already point at it, and the same call from a shortcut pressed in a game would let the question come up over that game.
 - `ponytail:` an app that minimizes instead of closing reads as asking; the setting is the way out until someone needs better.

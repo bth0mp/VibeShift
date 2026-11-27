@@ -45,6 +45,8 @@ internal static class Win32
     internal const uint WM_NULL = 0x0000;
     internal const uint WM_CLOSE = 0x0010;
     internal const uint SMTO_ABORTIFHUNG = 0x0002;
+    internal const int DWMWA_CLOAKED = 14;
+    internal const int DWM_CLOAKED_APP = 1;
 
     internal delegate bool EnumWindowsProc(IntPtr window, IntPtr lParam);
 
@@ -65,6 +67,23 @@ internal static class Win32
 
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW")]
     internal static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
+
+    [DllImport("dwmapi.dll")]
+    internal static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
+
+    internal const int SW_RESTORE = 9;
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    internal static extern bool SetForegroundWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsIconic(IntPtr window);
+
+    [DllImport("user32.dll")]
+    internal static extern bool ShowWindow(IntPtr window, int command);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct MEMORYSTATUSEX

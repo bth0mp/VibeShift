@@ -1,11 +1,14 @@
-# Live checks of what unit tests can't reach: the tray menu, the quit dialog, the command line, "Ask me" and
-# starting up in gaming mode. Run after `dotnet build VibeShift.sln -c Release`.
+# Live checks of what unit tests can't reach: closing apps that ask a question first, the tray menu, the quit dialog,
+# the command line, "Ask me" and starting up in gaming mode. Run after `dotnet build VibeShift.sln -c Release`, with
+# Windows PowerShell 5.1 (it compiles a small stand-in app).
 #
 # Safe to run next to your own VibeShift: every copy started here gets its own data folder (VIBESHIFT_DATA), which
 # also gives it its own single-instance lock, and every close toggle in that folder is off, so nothing of yours is
-# closed. The only app opened and closed is Windows' Character Map. Tray menus and the quit dialog do flash on
-# screen for a moment, so it refuses to run while a game is running.
+# closed. The only apps opened and closed are Windows' Character Map and AsksToSave.exe, a stand-in built into the
+# test folder. Their windows, tray menus and the quit dialog do show on screen for a moment, so it refuses to run
+# while a game is running.
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -ne 5) { throw 'Run this with Windows PowerShell 5.1: it compiles the stand-in app with Add-Type' }
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $exe = Join-Path $repo 'src\VibeShift\bin\Release\net10.0-windows\VibeShift.exe'
 if (-not (Test-Path $exe)) { throw "Build first: $exe is missing" }
@@ -28,6 +31,10 @@ public static class TrayPoke {
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    public static int ForegroundPid() { uint p; GetWindowThreadProcessId(GetForegroundWindow(), out p); return (int)p; }
+    public static bool Front(IntPtr h) { return SetForegroundWindow(h); }
     // WinForms NotifyIcon's callback message (WM_USER + 1024) with WM_RBUTTONUP opens THAT process's tray menu:
     // no mouse, no hunting for the icon, and never another copy's menu.
     public static int RightClick(int pid) {
@@ -103,8 +110,107 @@ function Stop-Copy($p) { if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id
 function Close-Charmap { Get-Process charmap -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
 function Reset { Remove-Item $session, $log -ErrorAction SilentlyContinue }
 
+# The stand-in for an app VibeShift closes. Its first argument says what it does when asked to close:
+#   ask     puts up a "Save changes?" box and stays open          inline  refuses, asking inside its own window
+#   freeze  stops answering                                       hide    hides its window (as a tray app does)
+#   cloak   hides its window by cloaking it (PowerToys' Command Palette does)
+#   two     has two windows and closes both                       (nothing) closes
+$standIn = Join-Path $dir 'AsksToSave.exe'
+Add-Type -OutputAssembly $standIn -OutputType WindowsApplication -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @'
+using System; using System.Drawing; using System.Runtime.InteropServices; using System.Threading; using System.Windows.Forms;
+public class QuietForm : Form { protected override bool ShowWithoutActivation { get { return true; } } }
+public static class AsksToSave {
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int value, int size);
+    static int open;
+    static void Window(string mode, string title) {
+        var f = new QuietForm { Text = title, Width = 380, Height = 140, StartPosition = FormStartPosition.CenterScreen };
+        var label = new Label { Text = "VibeShift live test (" + mode + ")", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
+        f.Controls.Add(label);
+        bool asking = false;
+        f.FormClosing += delegate(object sender, FormClosingEventArgs e) {
+            if (mode == "ask") {
+                e.Cancel = true;
+                if (asking) return;
+                asking = true;
+                MessageBox.Show(f, "Save changes to Untitled?", "AsksToSave", MessageBoxButtons.YesNoCancel);
+                asking = false;
+            }
+            else if (mode == "inline") { e.Cancel = true; label.Text = "Save changes? (asked inside the window)"; }
+            else if (mode == "freeze") Thread.Sleep(Timeout.Infinite);
+            else if (mode == "hide") { e.Cancel = true; f.Hide(); }
+            else if (mode == "cloak") { e.Cancel = true; int on = 1; DwmSetWindowAttribute(f.Handle, 13, ref on, 4); }
+        };
+        f.FormClosed += delegate { if (--open == 0) Application.ExitThread(); };
+        open++;
+        f.Show();
+    }
+    [STAThread] public static void Main(string[] args) {
+        string mode = args.Length > 0 ? args[0] : "plain";
+        Application.EnableVisualStyles();
+        Window(mode, "AsksToSave");
+        if (mode == "two") Window(mode, "AsksToSave (second window)");
+        Application.Run();
+    }
+}
+'@
+function Close-StandIns { Get-Process AsksToSave -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $standIn } | Stop-Process -Force -ErrorAction SilentlyContinue }
+function StandIns { @(Get-Process AsksToSave -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $standIn }) }
+# Starts a copy with the stand-in as an app to close, opens the stand-in in $mode and waits for $switch (a script
+# block that starts a switch to gaming mode) to finish. The stand-in starts after the copy: a copy started from a
+# terminal inside a job spares what was in that job before it.
+function Switch-With($mode, $extra = @{}, [scriptblock]$switch = { & $exe --gaming }, $done = 'Gaming mode (manual)') {
+    Reset; Write-Settings (@{ CustomApps = @($standIn); ForceCloseSeconds = 3 } + $extra)
+    $script:vs = Start-Copy
+    $app = Start-Process $standIn -ArgumentList $mode -PassThru; $null = $app.Handle
+    Start-Sleep 1
+    & $switch
+    if (-not (Wait-Until 45 { Logged $done })) { throw "the switch with the stand-in in '$mode' mode never finished" }
+    $app
+}
+$leftOpen = 'Left open (asked a question): [AsksToSave]'
+
 $vs = $null
 try {
+    'Apps that ask before closing'
+    $app = Switch-With 'ask'
+    Check 'an app showing "Save changes?" is left open, and logged' (-not $app.HasExited -and (Logged $leftOpen))
+    $left = @((Get-Content $session -Raw | ConvertFrom-Json).LeftOpen)
+    Check '...and the session says which row' ($left.Count -eq 1 -and $left[0] -like 'custom:*askstosave.exe')
+    & $exe --coding
+    $back = Wait-Until 20 { -not (Test-Path $session) }
+    Start-Sleep 3 # an app reopened through Explorer starts a moment later
+    Check '...and switching back does not open a second one' ($back -and (StandIns).Count -eq 1)
+    Stop-Copy $vs; Close-StandIns
+    $app = Switch-With 'inline'
+    Check 'an app asking inside its own window is left open' (-not $app.HasExited -and (Logged $leftOpen))
+    Stop-Copy $vs; Close-StandIns
+    $app = Switch-With 'freeze'
+    Check 'a frozen app is force-closed' ($app.WaitForExit(3000) -and -not (Logged 'Left open'))
+    Stop-Copy $vs; Close-StandIns
+    $app = Switch-With 'hide'
+    Check 'an app that hides its window is force-closed' ($app.WaitForExit(3000) -and -not (Logged 'Left open'))
+    Stop-Copy $vs; Close-StandIns
+    $app = Switch-With 'cloak'
+    Check 'an app that cloaks its window is force-closed' ($app.WaitForExit(3000) -and -not (Logged 'Left open'))
+    Stop-Copy $vs; Close-StandIns
+    $app = Switch-With 'two'
+    Check 'an app with two windows and no question closes completely' ($app.WaitForExit(3000) -and -not (Logged 'Left open'))
+    Stop-Copy $vs; Close-StandIns
+    $app = Switch-With 'ask' @{ KeepAppsThatAsk = $false }
+    Check 'with the setting off, an app that asks is force-closed' ($app.WaitForExit(3000) -and -not (Logged 'Left open'))
+    Stop-Copy $vs; Close-StandIns
+    # Auto mode: Character Map is the "game", in front if Windows allows it. Nobody answers the question, and it must
+    # not end up in front of the game. Windows lets a background app come forward once the PC has been idle for a
+    # few minutes, which is when this run exercises VibeShift putting the game back: the note says which happened.
+    $app = Switch-With 'ask' @{ AutoMode = $true; MyGames = @($charmap) } {
+        $game = Start-Process $charmap -PassThru; Start-Sleep 2; [void][TrayPoke]::Front($game.MainWindowHandle)
+    } 'Gaming mode (auto)'
+    Check 'Auto mode asks too: the app is left open' (-not $app.HasExited -and (Logged $leftOpen))
+    Check '...and its question is not in front of the game' ([TrayPoke]::ForegroundPid() -ne $app.Id)
+    if (Logged 'An app came to the front with a question') { '  note  the question came to the front, and the game was put back' } else { '  note  the question never came to the front' }
+    # Reset: the copy was in gaming mode, and the next one must start in vibe coding mode.
+    Stop-Copy $vs; Close-StandIns; Close-Charmap; Reset
+
     'Quit from the tray'
     Write-Settings
     $vs = Start-Copy
@@ -208,6 +314,7 @@ finally {
     Stop-Copy $vs
     Start-Sleep 2 # a Character Map that Explorer is still starting for a copy that has just gone
     Close-Charmap
+    Close-StandIns
     if ($failed.Count -gt 0 -and (Test-Path $log)) { ''; 'log of the last test:'; Get-Content $log }
     Start-Sleep 1
     Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue

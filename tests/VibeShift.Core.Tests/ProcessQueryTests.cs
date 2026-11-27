@@ -41,6 +41,7 @@ public class ProcessQueryTests
         Assert.False(AppWindows.Responds(Environment.ProcessId));
         Assert.Empty(AppWindows.Of(0x7FFFFFF0));
         Assert.False(AppWindows.Responds(0x7FFFFFF0));
+        Assert.False(AppWindows.KeepInFront(IntPtr.Zero, [Environment.ProcessId])); // nothing was in front to put back
     }
 
     [Fact]
