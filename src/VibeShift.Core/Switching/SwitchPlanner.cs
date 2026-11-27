@@ -138,15 +138,18 @@ public static class SwitchPlanner
         var closedIds = close.Select(t => t.Entry.Id).ToList();
         if (shutdownWsl && !closedIds.Contains(dockerWsl!.Entry.Id)) closedIds.Add(dockerWsl.Entry.Id);
 
+        // An automatic switch used to end everything at once, unsaved work included: nobody is there to answer, but
+        // an app that asks can simply stay open (see Switcher.PoliteClose). With the setting off, it still does.
+        bool ask = !automatic || s.KeepAppsThatAsk;
         return new GamingPlan(
             close,
             shutdownWsl,
-            PoliteClose: !automatic,
+            PoliteClose: ask,
             StopServices: s.ExtraBoost && !automatic ? s.BoostServices.ToList() : [],
             estimated)
         {
             ClosedEntryIds = closedIds,
-            PoliteCloseRoots = automatic ? [] : close.Where(t => t.Entry.Graceful).SelectMany(t => t.Roots).ToList(),
+            PoliteCloseRoots = ask ? close.Where(t => t.Entry.Graceful).SelectMany(t => t.Roots).ToList() : [],
         };
     }
 
@@ -154,10 +157,22 @@ public static class SwitchPlanner
     /// Every PID to kill, parents before children across all rows (an MCP server under VS Code dies after
     /// VS Code), so no supervisor outlives the children it could respawn. Ties keep each row's own order.
     /// </summary>
-    public static IReadOnlyList<int> KillOrder(IReadOnlyList<ProcInfo> all, GamingPlan plan) =>
-        plan.Close.SelectMany(t => t.KillPids).Distinct()
+    /// <param name="leftOpenRoots">
+    /// Roots that asked a question instead of closing. They stay, with everything under them whichever row it
+    /// matched: an app missing its helpers, or its MCP servers, is a broken app.
+    /// </param>
+    public static IReadOnlyList<int> KillOrder(IReadOnlyList<ProcInfo> all, GamingPlan plan, IReadOnlyCollection<int>? leftOpenRoots = null)
+    {
+        var kept = (leftOpenRoots ?? []).SelectMany(root => ProcessTree.Descendants(all, root)).Select(p => p.Pid).ToHashSet();
+        return plan.Close.SelectMany(t => t.KillPids).Distinct()
+            .Where(pid => !kept.Contains(pid))
             .OrderBy(pid => ProcessTree.Ancestors(all, pid).Count)
             .ToList();
+    }
+
+    /// <summary>The rows with an app among <paramref name="leftOpenRoots"/>: what to tell the user was left open.</summary>
+    public static IReadOnlyList<CatalogEntry> LeftOpen(GamingPlan plan, IReadOnlyCollection<int> leftOpenRoots) =>
+        plan.Close.Where(t => t.Roots.Any(r => leftOpenRoots.Contains(r.Pid))).Select(t => t.Entry).ToList();
 
     /// <summary>
     /// "What's using RAM": the biggest apps that aren't already a row, grouped by exe so a browser's 20

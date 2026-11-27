@@ -207,15 +207,33 @@ public class SwitchPlannerTests
         Assert.False(Plan(new[] { P(1, 0, "vmmem", bytes: 1000) }).ShutdownWsl); // a Hyper-V VM, not WSL
     }
 
-    [Fact]
-    public void Automatic_switch_skips_polite_close_and_boost()
+    [Fact] // 2026-11-27: Auto mode ended every app without asking, unsaved work and all
+    public void Automatic_switch_asks_apps_to_close_but_skips_boost()
     {
         var all = new[] { P(1, 0, "Cursor") };
         settings.ExtraBoost = true;
         Assert.Empty(Plan(all, automatic: true).StopServices);
+        Assert.True(Plan(all, automatic: true).PoliteClose);
+        Assert.Equal(new[] { 1 }, Plan(all, automatic: true).PoliteCloseRoots.Select(r => r.Pid));
+        settings.KeepAppsThatAsk = false; // as before: an automatic switch ends everything at once
         Assert.False(Plan(all, automatic: true).PoliteClose);
+        Assert.Empty(Plan(all, automatic: true).PoliteCloseRoots);
         Assert.True(Plan(all, automatic: false).PoliteClose);
         Assert.Equal(new[] { "SysMain", "WSearch" }, Plan(all, automatic: false).StopServices);
+    }
+
+    [Fact] // an app left open (it asked a question) keeps everything under it, other rows' processes included
+    public void Kill_order_leaves_out_everything_under_an_app_left_open()
+    {
+        var all = new[] { P(1, 0, "Code"), P(2, 1, "node"), P(3, 0, "Cursor"), P(4, 3, "Cursor") };
+        paths[1] = @"C:\x\Code.exe";
+        cmds[2] = "node mcp-server-x";
+        settings.Toggles["vscode"] = true;
+        var plan = Plan(all);
+        Assert.Equal(new[] { 3, 1, 4, 2 }, SwitchPlanner.KillOrder(all, plan));
+        Assert.Equal(new[] { 3, 4 }, SwitchPlanner.KillOrder(all, plan, [1]));
+        Assert.Equal(new[] { "vscode" }, SwitchPlanner.LeftOpen(plan, [1]).Select(e => e.Id));
+        Assert.Empty(SwitchPlanner.LeftOpen(plan, []));
     }
 
     [Fact]
@@ -347,7 +365,7 @@ public class SwitchPlannerTests
         settings.Toggles["browsers"] = true;
         var plan = Plan(new[] { P(1, 0, "firefox"), P(2, 0, "Cursor") });
         Assert.Equal(new[] { 2 }, plan.PoliteCloseRoots.Select(r => r.Pid));
-        Assert.Empty(Plan(new[] { P(1, 0, "firefox"), P(2, 0, "Cursor") }, automatic: true).PoliteCloseRoots);
+        Assert.Equal(new[] { 2 }, Plan(new[] { P(1, 0, "firefox"), P(2, 0, "Cursor") }, automatic: true).PoliteCloseRoots.Select(r => r.Pid));
     }
 
     [Fact] // 1.1 "What's using RAM": other apps grouped by exe, biggest first

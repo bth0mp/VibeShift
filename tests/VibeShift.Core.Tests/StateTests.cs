@@ -24,6 +24,20 @@ public sealed class StateTests : IDisposable
         Assert.Null(Store().LoadSession());
     }
 
+    [Fact] // files written by 1.10.1 and earlier have neither property: protect unsaved work by default, nothing left open
+    public void Files_from_before_apps_were_left_open_load_with_the_defaults()
+    {
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"ForceCloseSeconds\": 10}");
+        File.WriteAllText(Path.Combine(dir, "session.json"), "{\"Automatic\": true}");
+        Assert.True(Store().LoadSettings().KeepAppsThatAsk);
+        Assert.Empty(Store().LoadSession()!.LeftOpen);
+
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"KeepAppsThatAsk\": false}");
+        File.WriteAllText(Path.Combine(dir, "session.json"), "{\"LeftOpen\": [null, \"vscode\"]}");
+        Assert.False(Store().LoadSettings().KeepAppsThatAsk);
+        Assert.Equal(new[] { "vscode" }, Store().LoadSession()!.LeftOpen);
+    }
+
     [Fact]
     public void Settings_and_session_round_trip()
     {

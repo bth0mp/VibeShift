@@ -29,6 +29,13 @@ public sealed class Settings
     public bool ExtraBoost { get; set; }
     public int ForceCloseSeconds { get; set; } = 5;
 
+    /// <summary>
+    /// An app that answers the close request with a question ("Save changes?") is left open, and automatic switches
+    /// ask first too. Off = as it was up to 1.10.1: whatever is still open after the wait is ended, and an automatic
+    /// switch ends everything at once.
+    /// </summary>
+    public bool KeepAppsThatAsk { get; set; } = true;
+
     /// <summary>Switch back to vibe coding once the game closes, even when gaming was started by hand.</summary>
     public bool ReturnWhenGameCloses { get; set; } = true;
 
@@ -145,6 +152,12 @@ public sealed class SessionState
     /// <summary>Every entry closed, including MCP and CLI rows that never reopen; drives row tags.</summary>
     public List<string> ClosedEntryIds { get; set; } = [];
 
+    /// <summary>
+    /// Rows with an app that asked a question instead of closing, and so was left open. It stays in
+    /// <see cref="Closed"/>: answered and gone, it is reopened on the way back; still running, it is skipped.
+    /// </summary>
+    public List<string> LeftOpen { get; set; } = [];
+
     /// <summary>Private RAM of the processes actually killed.</summary>
     public long KilledBytes { get; set; }
 
@@ -162,5 +175,6 @@ public sealed class SessionState
         Closed.RemoveAll(c => c is null || c.EntryId is null || c.Name is null);
         StoppedServices.RemoveAll(x => x is null);
         ClosedEntryIds.RemoveAll(x => x is null);
+        LeftOpen.RemoveAll(x => x is null);
     }
 }
