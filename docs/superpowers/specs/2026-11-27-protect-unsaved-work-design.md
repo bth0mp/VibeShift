@@ -52,8 +52,10 @@ Auto mode does the same. Its switch can take up to "Force-close after" seconds l
 
 Two things found while building it (2026-11-27):
 
-- **Cloaked windows don't count.** PowerToys' Command Palette keeps a window that Windows calls visible but the app itself has cloaked. It would have read as asking. A window the app has cloaked is treated like one hidden to the tray; a window on another virtual desktop (cloaked by Windows) still counts.
-- **The window in use stays in front.** Windows stops a background app taking the foreground while the PC is in use, but not once it has been idle for a few minutes (a game left loading). The first live run showed the stand-in's question coming to the front. While it waits, VibeShift now puts back the window that was in front if an asked app takes its place. It does not do this when VibeShift's own window was in front: Start gaming was just clicked there.
+- **Cloaked windows don't count.** PowerToys' Command Palette keeps a window that Windows calls visible but the app itself has cloaked. It would have read as asking. A window the app has cloaked is still asked to close, but doesn't count as showing; a window on another virtual desktop (cloaked by Windows) still counts.
+- **The window in use stays in front.** Windows stops a background app taking the foreground while the PC is in use, but not once it has been idle for a few minutes (a game left loading). The first live run showed the stand-in's question coming to the front. While it waits, VibeShift now puts back the window that was in front if an asked app takes its place (`FrontGuard`). It does not do this when VibeShift's own window was in front (Start gaming was just clicked there), or when the asking app's own window was (the user is working in it, and wants its question).
+
+After the independent review (2026-11-27): the guard remembers the last window in front that was neither an asked app's nor VibeShift's, not a snapshot from the start; a minimized game is restored without waiting for it (`ShowWindowAsync`); a hand-edited "Force-close after" below 1 second becomes 1.
 
 **Setting.** Settings, Closing apps: "Leave an app open when it asks a question", on by default (`Settings.KeepAppsThatAsk`). Off restores today's behaviour exactly, including Auto mode closing apps right away.
 

@@ -124,11 +124,11 @@ Closing the window keeps VibeShift running as a small icon by the clock, with a 
 
 VibeShift asks an app to close the way its X button does, then waits (5 seconds unless you change it under **Settings → Closing apps**).
 
-- **An app that asks a question stays open.** If an app answers with **Save changes?** or anything else it wants you to decide, VibeShift leaves it running, with everything it started. Home says which app (**Still open: Visual Studio. It asked a question instead of closing.**), and so does a notification when you switched with the window closed.
+- **An app that asks a question stays open.** If an app answers with **Save changes?** or anything else it wants you to decide, VibeShift leaves it running, with everything it started. When you start gaming, Home says which app (**Still open: Visual Studio. It asked a question instead of closing.**), and so does a notification when you switched with the window closed. Closed from the ⚡ page, the app's switch just goes back to on.
 - **Answer the question whenever you like.** If the app then closes, VibeShift still reopens it when you're back to vibe coding.
 - **Frozen apps and tray apps are force-closed** after the wait, as are processes with no window at all. A frozen app can't be asking anything.
 - **An app that always asks** (some ask **Are you sure you want to exit?** every time) stays open every time. Turn that question off in the app, or turn off **Leave an app open when it asks a question** in VibeShift's settings: it then force-closes whatever is still open after the wait, as it did up to version 1.10.1.
-- **Web browsers and command-line agents aren't asked.** A browser is ended so that it restores your tabs, and an agent in a terminal has no window to ask. Save what matters in those before you start gaming.
+- **Web browsers and command-line agents aren't asked.** A browser is ended so that it restores your tabs, and an agent in a terminal usually has no window of its own to ask. Save what matters in those before you start gaming.
 
 ## Auto mode
 

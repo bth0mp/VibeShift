@@ -38,6 +38,17 @@ public sealed class StateTests : IDisposable
         Assert.Equal(new[] { "vscode" }, Store().LoadSession()!.LeftOpen);
     }
 
+    [Fact] // 2026-11-27 review: with no wait at all, every app still answers when it is looked at, and all were "left open"
+    public void A_hand_edited_wait_of_nothing_becomes_one_second()
+    {
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"ForceCloseSeconds\": 0}");
+        Assert.Equal(1, Store().LoadSettings().ForceCloseSeconds);
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"ForceCloseSeconds\": -5}");
+        Assert.Equal(1, Store().LoadSettings().ForceCloseSeconds);
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"ForceCloseSeconds\": 30}");
+        Assert.Equal(30, Store().LoadSettings().ForceCloseSeconds);
+    }
+
     [Fact]
     public void Settings_and_session_round_trip()
     {

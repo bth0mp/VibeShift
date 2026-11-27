@@ -41,7 +41,59 @@ public class ProcessQueryTests
         Assert.False(AppWindows.Responds(Environment.ProcessId));
         Assert.Empty(AppWindows.Of(0x7FFFFFF0));
         Assert.False(AppWindows.Responds(0x7FFFFFF0));
-        Assert.False(AppWindows.KeepInFront(IntPtr.Zero, [Environment.ProcessId])); // nothing was in front to put back
+    }
+
+    // The window in front while apps are asked to close: 0x10 a game (process 7), 0x20 a question from an app that
+    // was asked (process 50), VibeShift itself is process 1.
+    private static FrontGuard Guard() => new(selfPid: 1, asked: [50]);
+
+    [Fact]
+    public void A_question_that_comes_to_the_front_gives_way_to_the_window_that_was_there()
+    {
+        var guard = Guard();
+        Assert.Equal(0, guard.Step(0x10, 7));
+        Assert.Equal(0, guard.Step(0x10, 7));
+        Assert.Equal(0x10, guard.Step(0x20, 50));
+    }
+
+    [Fact] // 2026-11-27 review: pressing the shortcut from the app that asks took the keyboard off its own question
+    public void The_app_you_were_working_in_keeps_its_question_in_front()
+    {
+        var guard = Guard();
+        Assert.Equal(0, guard.Step(0x30, 50)); // its main window was in front
+        Assert.Equal(0, guard.Step(0x20, 50)); // now its question is: leave it
+    }
+
+    [Fact]
+    public void With_VibeShifts_own_window_in_front_the_question_may_come_forward()
+    {
+        var guard = Guard();
+        Assert.Equal(0, guard.Step(0x40, 1));
+        Assert.Equal(0, guard.Step(0x20, 50));
+        // ...also when VibeShift's window was opened after the switch began
+        guard = Guard();
+        Assert.Equal(0, guard.Step(0x10, 7));
+        Assert.Equal(0, guard.Step(0x40, 1));
+        Assert.Equal(0, guard.Step(0x20, 50));
+    }
+
+    [Fact] // 2026-11-27 review: the window put back was the one in front when the switch began, not the one in use since
+    public void A_window_brought_forward_meanwhile_is_the_one_put_back()
+    {
+        var guard = Guard();
+        Assert.Equal(0, guard.Step(0x10, 7));
+        Assert.Equal(0, guard.Step(0x11, 8));
+        Assert.Equal(0x11, guard.Step(0x20, 50));
+        Assert.Equal(0, guard.Step(0x11, 8)); // back in front: nothing to do
+        Assert.Equal(0x11, guard.Step(0x20, 50)); // and again, should the question come forward once more
+    }
+
+    [Fact]
+    public void With_nothing_in_front_there_is_nothing_to_put_back()
+    {
+        var guard = Guard();
+        Assert.Equal(0, guard.Step(0, 0));
+        Assert.Equal(0, guard.Step(0x20, 50));
     }
 
     [Fact]

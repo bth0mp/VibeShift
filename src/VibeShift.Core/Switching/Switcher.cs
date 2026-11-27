@@ -296,9 +296,16 @@ public sealed class Switcher(JsonStore store)
     private static IReadOnlyCollection<int> PoliteClose(IEnumerable<ProcInfo> roots, int seconds, bool keepAsking)
     {
         var procs = roots.Select(Open).OfType<Process>().ToList();
-        // The window in use stays in front, whatever an app answers (see AppWindows.KeepInFront). Unless it is
-        // VibeShift's own: Start gaming was just clicked there, and a question that can come forward should.
-        var front = AppWindows.InFrontAndNotOurs();
+        // The window in use stays in front, whatever an app answers (see FrontGuard): look before anything is asked.
+        var guard = new FrontGuard(Environment.ProcessId, procs.Select(p => p.Id).ToHashSet());
+        bool putBack = false;
+        void GuardFront()
+        {
+            var (now, pid) = AppWindows.InFront();
+            var back = guard.Step(now, pid);
+            if (back != IntPtr.Zero) putBack |= AppWindows.PutInFront(back);
+        }
+        GuardFront();
         // Only wait for apps that took the close request; ones with no window to ask get force-closed straight away.
         var closing = new List<Process>();
         foreach (var p in procs)
@@ -314,15 +321,13 @@ public sealed class Switcher(JsonStore store)
         long deadline = started + seconds * 1000L;
         bool StillClosing(Process p) =>
             !HasExited(p) && (Environment.TickCount64 - started < 1000 || AppWindows.Of(p.Id).Count > 0);
-        var asked = closing.Select(p => p.Id).ToList();
-        bool cameForward = false;
         while (Environment.TickCount64 < deadline && closing.Any(StillClosing))
         {
-            cameForward |= AppWindows.KeepInFront(front, asked);
+            GuardFront();
             Thread.Sleep(250);
         }
-        cameForward |= AppWindows.KeepInFront(front, asked);
-        if (cameForward) Log.Write("An app came to the front with a question: put the window that was in front back");
+        GuardFront();
+        if (putBack) Log.Write("An app came to the front with a question: put the window that was in front back");
         // Asked to close, still running, still showing a window that answers: it didn't hide to the tray and it isn't
         // frozen. It put up a question ("Save changes?"), or it's busy saving. Ending it here is how unsaved work was
         // lost, so it stays, and the user is told.

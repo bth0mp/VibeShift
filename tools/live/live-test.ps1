@@ -7,6 +7,7 @@
 # closed. The only apps opened and closed are Windows' Character Map and AsksToSave.exe, a stand-in built into the
 # test folder. Their windows, tray menus and the quit dialog do show on screen for a moment, so it refuses to run
 # while a game is running.
+param([switch]$ClosingOnly) # only "Apps that ask before closing", the first section
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -ne 5) { throw 'Run this with Windows PowerShell 5.1: it compiles the stand-in app with Add-Type' }
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -113,8 +114,10 @@ function Reset { Remove-Item $session, $log -ErrorAction SilentlyContinue }
 # The stand-in for an app VibeShift closes. Its first argument says what it does when asked to close:
 #   ask     puts up a "Save changes?" box and stays open          inline  refuses, asking inside its own window
 #   freeze  stops answering                                       hide    hides its window (as a tray app does)
-#   cloak   hides its window by cloaking it (PowerToys' Command Palette does)
+#   cloak   hides its window by cloaking it                       cloaked its window is cloaked from the start
+#           (PowerToys' Command Palette does both), and it closes when asked
 #   two     has two windows and closes both                       (nothing) closes
+# Closing by itself (not being ended) leaves AsksToSave.exe.closed behind.
 $standIn = Join-Path $dir 'AsksToSave.exe'
 Add-Type -OutputAssembly $standIn -OutputType WindowsApplication -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @'
 using System; using System.Drawing; using System.Runtime.InteropServices; using System.Threading; using System.Windows.Forms;
@@ -143,6 +146,7 @@ public static class AsksToSave {
         f.FormClosed += delegate { if (--open == 0) Application.ExitThread(); };
         open++;
         f.Show();
+        if (mode == "cloaked") { int on = 1; DwmSetWindowAttribute(f.Handle, 13, ref on, 4); }
     }
     [STAThread] public static void Main(string[] args) {
         string mode = args.Length > 0 ? args[0] : "plain";
@@ -150,6 +154,7 @@ public static class AsksToSave {
         Window(mode, "AsksToSave");
         if (mode == "two") Window(mode, "AsksToSave (second window)");
         Application.Run();
+        System.IO.File.WriteAllText(System.Reflection.Assembly.GetExecutingAssembly().Location + ".closed", mode);
     }
 }
 '@
@@ -197,6 +202,9 @@ try {
     $app = Switch-With 'cloak'
     Check 'an app that cloaks its window is force-closed' ($app.WaitForExit(3000) -and -not (Logged 'Left open'))
     Stop-Copy $vs; Close-StandIns
+    $app = Switch-With 'cloaked'
+    Check 'an app whose window was cloaked all along is still asked, and closes by itself' ($app.WaitForExit(3000) -and (Test-Path "$standIn.closed") -and -not (Logged 'Left open'))
+    Stop-Copy $vs; Close-StandIns
     $app = Switch-With 'two'
     Check 'an app with two windows and no question closes completely' ($app.WaitForExit(3000) -and -not (Logged 'Left open'))
     Stop-Copy $vs; Close-StandIns
@@ -210,10 +218,18 @@ try {
         $game = Start-Process $charmap -PassThru; Start-Sleep 2; [void][TrayPoke]::Front($game.MainWindowHandle)
     } 'Gaming mode (auto)'
     Check 'Auto mode asks too: the app is left open' (-not $app.HasExited -and (Logged $leftOpen))
-    Check '...and its question is not in front of the game' ([TrayPoke]::ForegroundPid() -ne $app.Id)
-    if (Logged 'An app came to the front with a question') { '  note  the question came to the front, and the game was put back' } else { '  note  the question never came to the front' }
+    $front = [TrayPoke]::ForegroundPid()
+    Check '...and its question is not in front of the game' ($front -ne $app.Id)
+    if (Logged 'An app came to the front with a question') {
+        Check '...it came to the front, and the game was put back' ($front -eq (Get-Process charmap).Id)
+    } else { '  note  the question never came to the front (the PC was in use), so putting the game back was not exercised' }
     # Reset: the copy was in gaming mode, and the next one must start in vibe coding mode.
     Stop-Copy $vs; Close-StandIns; Close-Charmap; Reset
+    if ($ClosingOnly) {
+        if ($failed.Count -gt 0) { throw "$($failed.Count) live check(s) failed: $($failed -join '; ')" }
+        'The closing checks passed. The other sections were not run.'
+        return
+    }
 
     'Quit from the tray'
     Write-Settings

@@ -83,7 +83,7 @@ internal static class Win32
     internal static extern bool IsIconic(IntPtr window);
 
     [DllImport("user32.dll")]
-    internal static extern bool ShowWindow(IntPtr window, int command);
+    internal static extern bool ShowWindowAsync(IntPtr window, int command);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct MEMORYSTATUSEX

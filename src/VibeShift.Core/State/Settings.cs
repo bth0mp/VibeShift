@@ -86,6 +86,8 @@ public sealed class Settings
     {
         foreach (var list in new[] { KnownApps, CustomApps, MyGames, NotGames, BoostServices, PausedServices, VibeApps, GameApps }) list.RemoveAll(x => x is null);
         foreach (var bad in LaunchTargets.Where(kv => kv.Value is null).Select(kv => kv.Key).ToList()) LaunchTargets.Remove(bad);
+        // With no wait at all, every app still answers when it's looked at, and all of them would be "left open".
+        if (ForceCloseSeconds < 1) ForceCloseSeconds = 1;
         // 1.0.0 covered the Microsoft 365 Copilot app under the Copilot toggle; keep the user's choice for it.
         if (SchemaVersion < 2 && Toggles.TryGetValue("copilot", out var on) && !Toggles.ContainsKey("m365copilot"))
             Toggles["m365copilot"] = on;
