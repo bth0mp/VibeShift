@@ -25,7 +25,7 @@ The first time you run it, Windows may show **"Windows protected your PC"**. Cli
 
 **Start gaming**
 
-1. Asks each app you've switched on to close. Anything still open after 5 seconds (you can change this) is force-closed.
+1. Asks each app you've switched on to close and gives them 5 seconds (you can change this). An app that asks a question instead, such as **Save changes?**, is [left open](#closing-apps-safely). Anything else still running is force-closed.
 2. Stops leftover MCP servers.
 3. Shuts down WSL and Docker, if you've switched them on.
 4. Pauses a couple of Windows background services, if you've turned on [Extra boost](#extra-boost).
@@ -120,11 +120,21 @@ Closing the window keeps VibeShift running as a small icon by the clock, with a 
 - **Separate apps stay open.** A browser opened from a link in Claude, or an app whose row you switched off, survives even if a closed app started it.
 - **Started VibeShift from an app's terminal?** If that's an app VibeShift closes (Claude Code, an AI app's built-in terminal), VibeShift restarts itself through Windows first. Closing the app for gaming then can't take VibeShift down with it. If it can't move out (it was started with `--tray`, say), that app is left running instead, since VibeShift can't close part of it and reopen it afterwards.
 
+## Closing apps safely
+
+VibeShift asks an app to close the way its X button does, then waits (5 seconds unless you change it under **Settings → Closing apps**).
+
+- **An app that asks a question stays open.** If an app answers with **Save changes?** or anything else it wants you to decide, VibeShift leaves it running, with everything it started. Home says which app (**Still open: Visual Studio. It asked a question instead of closing.**), and so does a notification when you switched with the window closed.
+- **Answer the question whenever you like.** If the app then closes, VibeShift still reopens it when you're back to vibe coding.
+- **Frozen apps and tray apps are force-closed** after the wait, as are processes with no window at all. A frozen app can't be asking anything.
+- **An app that always asks** (some ask **Are you sure you want to exit?** every time) stays open every time. Turn that question off in the app, or turn off **Leave an app open when it asks a question** in VibeShift's settings: it then force-closes whatever is still open after the wait, as it did up to version 1.10.1.
+- **Web browsers and command-line agents aren't asked.** A browser is ended so that it restores your tabs, and an agent in a terminal has no window to ask. Save what matters in those before you start gaming.
+
 ## Auto mode
 
 **Settings → When a game starts** has three choices. It starts on **Off**: VibeShift only switches when you tell it to.
 
-- **Automatic** (Auto mode): VibeShift switches to gaming mode by itself when a game starts. First a notification says **Gaming mode in 10 seconds**: click it to keep your apps open (save that file first, or it wasn't a game), and Auto mode leaves that game alone until another one starts. It switches back 10 seconds after the game closes, so a launcher restarting the game doesn't bounce your apps.
+- **Automatic** (Auto mode): VibeShift switches to gaming mode by itself when a game starts. First a notification says **Gaming mode in 10 seconds**: click it to keep your apps open (it wasn't a game, or you're not done yet), and Auto mode leaves that game alone until another one starts. Apps are asked to close the same way as when you click Start gaming, so one with unsaved work [stays open](#closing-apps-safely). It switches back 10 seconds after the game closes, so a launcher restarting the game doesn't bounce your apps.
 - **Ask me**: when a game starts, a notification says so. Click it and VibeShift switches to gaming mode; ignore it and nothing closes. Good if you want the reminder but not apps closing by themselves.
 
 **What counts as a game:**
@@ -137,7 +147,7 @@ Closing the window keeps VibeShift running as a small icon by the clock, with a 
 - Switch back to vibe coding by hand while a game is still running, and Auto mode leaves that game alone.
 - Start gaming by hand, and whether VibeShift switches you back is up to **Switch back when my game closes** (on by default), not Auto mode.
 
-Automatic switches never open the VibeShift window or pop anything up over your game. The 10-second notice and the Ask me question are ordinary Windows notifications, and Windows holds those back while a game runs full screen (Auto mode's switch then just happens; Ask me's question waits in the notification centre).
+Automatic switches never open the VibeShift window or pop anything up over your game. The 10-second notice and the Ask me question are ordinary Windows notifications, and Windows holds those back while a game runs full screen (Auto mode's switch then just happens; Ask me's question waits in the notification centre). An app that answers the switch with a question of its own (**Save changes?**) shows it in its own window, behind your game. If that window does come to the front, VibeShift puts your game back in front.
 
 ## Extra boost
 

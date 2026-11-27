@@ -660,6 +660,37 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { Settings.ForceCloseSeconds = value; SaveSettings(); Raise(); }
     }
 
+    public bool KeepAppsThatAsk
+    {
+        get => Settings.KeepAppsThatAsk;
+        set { Settings.KeepAppsThatAsk = value; SaveSettings(); Raise(); }
+    }
+
+    /// <summary>
+    /// Apps this gaming session left open because they asked a question instead of closing, by name.
+    /// <paramref name="stillRunning"/> drops the ones that have closed since (answered, or closed by hand).
+    /// </summary>
+    private IReadOnlyList<string> LeftOpen(bool stillRunning) => session is not { LeftOpen.Count: > 0 } s ? []
+        : Switcher.Entries(Settings)
+            .Where(e => s.LeftOpen.Contains(e.Id) && (!stillRunning || (rows.TryGetValue(e.Id, out var row) && row.IsRunning)))
+            .Select(e => e.Name).ToList();
+
+    public bool HasLeftOpen => LeftOpen(stillRunning: true).Count > 0;
+
+    /// <summary>Home, while gaming: "Still open: Visual Studio. It asked a question instead of closing."</summary>
+    public string LeftOpenText => LeftOpen(stillRunning: true) is { Count: > 0 } names
+        ? $"Still open: {string.Join(", ", names)}. {(names.Count == 1 ? "It" : "They")} asked a question instead of closing."
+        : "";
+
+    /// <summary>
+    /// The same as a notification, for a switch made with the window out of sight: its title and text, or null when
+    /// nothing was left open. Not filtered by what is running: the rows haven't been refreshed since the switch.
+    /// </summary>
+    public (string Title, string Text)? LeftOpenNotice => LeftOpen(stillRunning: false) is { Count: > 0 } names
+        ? ($"{string.Join(" and ", names)} {(names.Count == 1 ? "is" : "are")} still open",
+           $"{(names.Count == 1 ? "It" : "They")} asked a question instead of closing, so VibeShift left {(names.Count == 1 ? "it" : "them")} alone.")
+        : null;
+
     public string BoostServicesText => string.Join(", ", Settings.BoostServices);
 
     public string Version => "VibeShift " + typeof(MainViewModel).Assembly.GetName().Version!.ToString(3);
@@ -934,6 +965,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (learned) store.SaveSettings(Settings);
 
         var closedIds = session?.ClosedEntryIds ?? [];
+        var leftOpen = session?.LeftOpen ?? [];
         var all = new List<AppRow>();
         foreach (var e in entries)
         {
@@ -966,7 +998,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 row.IsDimmed = false;
                 // Closed for gaming but opened again since (Ctrl+Alt+V, the Vibe page, by hand): it isn't closed any more.
-                row.Tag = IsGaming && isRunning ? (closedIds.Contains(e.Id) ? "open again" : "left running")
+                // Or never closed at all: it answered the close request with a question, and was left open.
+                row.Tag = IsGaming && isRunning
+                    ? (leftOpen.Contains(e.Id) ? "asked a question" : closedIds.Contains(e.Id) ? "open again" : "left running")
                     : failedReopen.Contains(e.Id) ? "couldn't reopen" : "";
             }
             all.Add(row);
@@ -977,6 +1011,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : r.IsRunning || failedReopen.Contains(r.Id)).ToList();
         Sync(AllRows, all);
         Sync(HomeRows, home);
+        Raise(nameof(LeftOpenText));
+        Raise(nameof(HasLeftOpen));
 
         FreeRamText = Format.Bytes(avail);
         AppsText = $"{all.Count(r => r.IsRunning)} open";

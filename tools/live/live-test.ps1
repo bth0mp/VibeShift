@@ -176,6 +176,10 @@ try {
     Check 'an app showing "Save changes?" is left open, and logged' (-not $app.HasExited -and (Logged $leftOpen))
     $left = @((Get-Content $session -Raw | ConvertFrom-Json).LeftOpen)
     Check '...and the session says which row' ($left.Count -eq 1 -and $left[0] -like 'custom:*askstosave.exe')
+    & $exe # a second start shows the running copy's window
+    $said = $false
+    try { $said = [bool](Find $vs.Id 'Still open: AsksToSave. It asked a question instead of closing.' 15) -and [bool](Find $vs.Id 'asked a question' 5) } catch { }
+    Check '...and Home says so, under the button and on the app''s row' $said
     & $exe --coding
     $back = Wait-Until 20 { -not (Test-Path $session) }
     Start-Sleep 3 # an app reopened through Explorer starts a moment later

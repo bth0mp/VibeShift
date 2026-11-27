@@ -70,7 +70,7 @@ public partial class App : Application
         if (Arg(e.Args, "--screenshot") is { } png)
         {
             Screenshot(png, Arg(e.Args, "--theme") ?? "dark", Arg(e.Args, "--demo") ?? "coding", Arg(e.Args, "--page") ?? "home",
-                e.Args.Contains("--bottom"));
+                e.Args.Contains("--bottom"), double.TryParse(Arg(e.Args, "--scroll"), out double scroll) ? scroll : 0);
             return;
         }
 
@@ -190,6 +190,9 @@ public partial class App : Application
             if (changed && mode == Mode.Coding) _ = vm.LoadGamesAsync();
             // Back from gaming with the window out of sight: say what opened. Nothing ever pops up while you play.
             if (changed && mode == Mode.Coding && !window.IsVisible) tray.Notify("Back to vibe coding", vm.LastReturnMessage);
+            // An app that asked a question instead of closing was left open: say which. Like the 10-second notice,
+            // Windows holds this back while a game runs full screen.
+            if (changed && mode == Mode.Gaming && !window.IsVisible && vm.LeftOpenNotice is { } notice) tray.Notify(notice.Title, notice.Text);
         };
         // "Switch back when my game closes" flipped in the middle of a session started by hand applies now, not at
         // the next switch. (A session Auto mode started switches back whatever the setting says.)
@@ -637,7 +640,7 @@ public partial class App : Application
     }
 
     /// <summary>--screenshot: renders the window with the mockup's sample data to a 2x PNG and exits. Touches no processes.</summary>
-    private void Screenshot(string png, string theme, string demoMode, string page, bool bottom)
+    private void Screenshot(string png, string theme, string demoMode, string page, bool bottom, double scroll)
     {
         ThemeManager.Apply(theme == "light" ? ThemeChoice.Light : ThemeChoice.Dark, highContrast: theme == "contrast");
         var demoVm = new MainViewModel(new JsonStore(Path.GetTempPath()), new Settings(), demo: true);
@@ -653,9 +656,11 @@ public partial class App : Application
         (w as MainWindow)?.ShowPage(page);
         w.ContentRendered += (_, _) =>
         {
-            if (bottom && w is MainWindow main) // --bottom: the end of the Settings page, which is taller than the window
+            // The Settings page is taller than the window. --bottom: its end; --scroll 700: that far down.
+            if ((bottom || scroll > 0) && w is MainWindow main)
             {
-                main.SettingsScroll.ScrollToEnd();
+                if (bottom) main.SettingsScroll.ScrollToEnd();
+                else main.SettingsScroll.ScrollToVerticalOffset(scroll);
                 w.UpdateLayout();
             }
             var root = (FrameworkElement)w.Content;

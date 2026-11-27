@@ -107,6 +107,9 @@
                             AutomationProperties.Name="{Binding PlayingText, StringFormat='{}{0}: not a game'}" />
                     <TextBlock Style="{StaticResource Hint}" Text="{Binding PlayingText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
+                <!-- While gaming: apps that answered the close request with a question, and so were left open -->
+                <TextBlock Style="{StaticResource Hint}" Text="{Binding LeftOpenText}" TextWrapping="Wrap" Margin="2,0,2,10"
+                           Visibility="{Binding HasLeftOpen, Converter={StaticResource Visible}}" />
                 <Grid>
                     <Button Style="{StaticResource PrimaryButton}" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}"
                             IsEnabled="{Binding CanVibeAct}" Visibility="{Binding IsCoding, Converter={StaticResource Visible}}" />
@@ -327,9 +330,19 @@
                 <TextBlock Style="{StaticResource Label}" Text="CLOSING APPS" Margin="0,18,0,7" />
                 <Border Style="{StaticResource Tile}">
                     <StackPanel>
+                        <DockPanel>
+                            <CheckBox DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding KeepAppsThatAsk}" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Leave an app open when it asks a question" />
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="Leave an app open when it asks a question" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,0"
+                                           Text="Such as &quot;Save changes?&quot;. Turn this off to force-close it anyway." />
+                            </StackPanel>
+                        </DockPanel>
+                        <Rectangle Height="1" Fill="{DynamicResource BorderBrush}" Margin="0,11" />
                         <TextBlock Text="Force-close after" />
                         <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,9"
-                                   Text="When you click Start gaming, apps get this long to close on their own. Auto mode closes them right away." />
+                                   Text="Apps get this long to close on their own." />
                         <ListBox Style="{StaticResource Segmented}" HorizontalAlignment="Left" ItemsSource="{Binding ForceCloseOptions}"
                                  ItemStringFormat="{}{0} s" SelectedItem="{Binding ForceCloseSeconds}"
                                  AutomationProperties.Name="Force-close after" />
